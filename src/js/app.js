@@ -105,7 +105,8 @@ watermarkCheckbox.addEventListener('change', () => {
   if (!watermarkCheckbox.checked) {
     watermarkFile = null;
     watermarkPreview.src = '';
-    watermarkPreviewWrap.hidden = true;
+    watermarkPreview.src = '/src/img/image.svg';
+    watermarkRemove.hidden = true;
     watermarkInput.value = '';
   }
 });
@@ -120,13 +121,13 @@ watermarkInput.addEventListener('change', (e) => {
   }
   watermarkFile = file;
   watermarkPreview.src = URL.createObjectURL(file);
-  watermarkPreviewWrap.hidden = false;
+  watermarkRemove.hidden = false;
 });
 
 watermarkRemove.addEventListener('click', () => {
   watermarkFile = null;
-  watermarkPreview.src = '';
-  watermarkPreviewWrap.hidden = true;
+  watermarkPreview.src = '/src/img/image.svg';
+  watermarkRemove.hidden = true;
   watermarkInput.value = '';
 });
 
@@ -499,8 +500,8 @@ function resetAll() {
   watermarkCheckbox.checked = false;
   watermarkOptions.hidden = true;
   watermarkFile = null;
-  watermarkPreview.src = '';
-  watermarkPreviewWrap.hidden = true;
+  watermarkPreview.src = '/src/img/image.svg';
+  watermarkRemove.hidden = true;
   watermarkInput.value = '';
   watermarkPosition.value = 'bottom-right';
   watermarkSize.value = 20;

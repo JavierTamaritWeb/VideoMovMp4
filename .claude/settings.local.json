@@ -20,7 +20,9 @@
       "Bash(npm init:*)",
       "Bash(ffprobe -version)",
       "Bash(chmod:*)",
-      "Bash(bash /Users/imac_mini_javi/Documents/WEB/FRONTEND_TOOLS/VideoMobMp4/e2e/fixtures/generate-fixture.sh 2>&1)"
+      "Bash(bash /Users/imac_mini_javi/Documents/WEB/FRONTEND_TOOLS/VideoMobMp4/e2e/fixtures/generate-fixture.sh 2>&1)",
+      "Bash(gh auth:*)",
+      "Bash(gh repo:*)"
     ]
   }
 }
