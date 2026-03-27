@@ -497,6 +497,65 @@ body {
   display: none;
 }
 
+/* ─── Toggle Switch ──────────────────────────────────────────────────── */
+
+.settings__toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+
+.settings__toggle-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.settings__toggle-track {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+
+.settings__toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: all var(--transition);
+}
+
+.settings__toggle-input:checked + .settings__toggle-track {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.settings__toggle-input:checked + .settings__toggle-track::after {
+  left: 22px;
+  background: white;
+}
+
+.settings__toggle-input:focus-visible + .settings__toggle-track {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.settings__toggle-text {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
 /* ─── Meta Cards ─────────────────────────────────────────────────────────── */
 
 .meta-cards {

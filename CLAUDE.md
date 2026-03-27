@@ -21,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | File | Role |
 |------|------|
 | `server.mjs` | HTTP server (native `node:http`), API endpoints, job lifecycle, FFmpeg orchestration, static file serving, live-reload SSE |
-| `src/js/converterCore.js` | Pure functions (no DOM/Node deps): validation, CRF mapping, format helpers, filename sanitization, ffprobe parsing |
+| `src/js/converterCore.js` | Pure functions (no DOM/Node deps): validation, CRF mapping, format helpers, filename sanitization, ffprobe parsing, platform presets, video filter chain building |
 | `src/js/app.js` | Browser UI controller: state machine (idle → configuring → converting → done/error), SSE client, drag-and-drop, download |
 | `public/index.html` | Single HTML page with CDN deps (Font Awesome, Notyf, Inter font) |
 | `src/css/app.css` | Dark theme, BEM naming, mobile-first responsive |
@@ -35,9 +35,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Concurrency:** Rate limiter (5 req/min per IP) + max concurrent jobs (default 2). Configurable via env vars.
 - **Multipart parsing:** Custom implementation in `server.mjs` (no multer at runtime despite being a dependency).
 - **Graceful shutdown:** SIGTERM/SIGINT kill active FFmpeg processes, close SSE clients, clean temp files.
+- **Platform presets:** `PLATFORM_PRESETS` in `converterCore.js` defines per-platform FFmpeg settings (web, tiktok, instagram, youtube). `buildPlatformArgs()` returns the full FFmpeg args array; `buildVideoFilterChain()` handles aspect ratio crop + scale. When a platform is selected, resolution/encoding-preset controls are hidden and the preset drives those values.
+- **Mirror (hflip):** Toggle in the settings panel. The `hflip` filter is injected into the `-vf` chain in `server.mjs` after args are built (works with both custom and platform paths).
 
 ## Endpoints
-- `POST /api/convert` — Upload MOV + start conversion job
+- `POST /api/convert` — Upload MOV + start conversion job (fields: video, quality, resolution, preset, platform, igFormat, mirror)
 - `GET /api/jobs/:id` — SSE stream with progress events (metadata → progress → done/error)
 - `POST /api/jobs/:id/cancel` — Cancel conversion (sends SIGTERM to FFmpeg)
 - `GET /api/jobs/:id/download` — Download converted MP4
@@ -47,7 +49,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Conversion pipeline
 1. Upload MOV → validate extension + magic bytes (ftyp)
 2. `ffprobe` → extract metadata (duration, resolution, codec, fps)
-3. `ffmpeg` → convert to MP4 (libx264 + AAC, `-movflags +faststart`, `-pix_fmt yuv420p`, quality-mapped CRF)
+3. `ffmpeg` → convert to MP4. Two paths:
+   - **Custom:** libx264, user-selected CRF/resolution/preset (legacy path)
+   - **Platform:** `buildPlatformArgs()` sets codec, profile, level, bitrate cap, aspect ratio crop, fps cap per platform
+   - If mirror enabled: `hflip` filter appended to `-vf` chain
 4. Stream progress via SSE → download available on completion
 
 ## Testing

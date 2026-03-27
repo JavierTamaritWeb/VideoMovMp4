@@ -6,12 +6,12 @@
 
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-required-007808?logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
-[![Vitest](https://img.shields.io/badge/Tests-58%20passed-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
+[![Vitest](https://img.shields.io/badge/Tests-80%20passed-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
 <br>
 
-Sube un archivo `.mov`, ajusta calidad y resolucion, y descarga un `.mp4` listo para publicar.
+Sube un archivo `.mov`, elige la plataforma de destino (Web, TikTok, Instagram, YouTube), ajusta calidad, y descarga un `.mp4` optimizado.
 Todo el procesamiento se realiza en tu maquina con FFmpeg — ningun archivo sale de tu equipo.
 
 </div>
@@ -43,12 +43,14 @@ Todo el procesamiento se realiza en tu maquina con FFmpeg — ningun archivo sal
 
 ### Conversion
 
-- **MOV a MP4** con codecs H.264 (libx264) + AAC a 128 kbps
+- **MOV a MP4** con codecs H.264 (libx264) + AAC
+- **Presets por plataforma** — Web, TikTok (9:16), Instagram (Reels 9:16 / Feed 1:1), YouTube (H.264 High). Cada preset ajusta automaticamente resolucion, aspect ratio, fps, bitrate y perfil H.264
+- **Espejo horizontal** — opcion para invertir el video horizontalmente (filtro `hflip`)
 - **`-movflags +faststart`** — el MP4 se reproduce en el navegador sin descargar completo
 - **`-pix_fmt yuv420p`** — compatibilidad maxima con reproductores y dispositivos
 - **Calidad ajustable** — slider de 1 a 100 con mapeo CRF perceptual (no lineal)
 - **Resolucion** — Original, 1080p, 720p o 480p (solo reduce, nunca amplia)
-- **Presets** — Ultrarapido, Rapido, Equilibrado o Maxima calidad
+- **Presets de velocidad** — Ultrarapido, Rapido, Equilibrado o Maxima calidad
 
 ### Interfaz
 
@@ -147,9 +149,13 @@ JOB_TTL_MIN=10            # Minutos que un job completado permanece disponible
 
 ### 2. Ajustar opciones
 
-- **Calidad** — slider de 1 a 100 (default 75). Muestra el valor CRF calculado en tiempo real
-- **Resolucion** — dropdown con la resolucion actual del video indicada. Si seleccionas una resolucion mayor a la del video, se mantiene la original
-- **Preset** — velocidad de codificacion. "Equilibrado" es el default. Presets mas lentos comprimen mejor
+- **Plataforma** — selecciona el destino: Personalizado, Web, TikTok, Instagram o YouTube. Cada plataforma aplica automaticamente los ajustes optimos (resolucion, aspect ratio, fps, bitrate, perfil H.264)
+  - **Instagram** ofrece sub-selector: Reels (9:16) o Feed (1:1)
+  - **Personalizado** permite controlar todos los ajustes manualmente (comportamiento clasico)
+- **Calidad** — slider de 1 a 100 (default 75). Muestra el valor CRF calculado en tiempo real. Disponible en todos los modos
+- **Espejo horizontal** — toggle para invertir el video horizontalmente
+- **Resolucion** — dropdown (solo visible en modo Personalizado). Si seleccionas una resolucion mayor a la del video, se mantiene la original
+- **Preset de velocidad** — velocidad de codificacion (solo visible en modo Personalizado). "Equilibrado" es el default
 
 ### 3. Convertir
 
@@ -216,7 +222,24 @@ curl -X POST http://localhost:5173/api/convert \
   -F "video=@mi_video.mov" \
   -F "quality=75" \
   -F "resolution=720p" \
-  -F "preset=medium"
+  -F "preset=medium" \
+  -F "platform=custom" \
+  -F "mirror=0"
+
+# Con preset de plataforma (TikTok)
+curl -X POST http://localhost:5173/api/convert \
+  -F "video=@mi_video.mov" \
+  -F "quality=75" \
+  -F "platform=tiktok" \
+  -F "mirror=0"
+
+# Instagram Feed con espejo horizontal
+curl -X POST http://localhost:5173/api/convert \
+  -F "video=@mi_video.mov" \
+  -F "quality=75" \
+  -F "platform=instagram" \
+  -F "igFormat=feed" \
+  -F "mirror=1"
 ```
 
 ```json
@@ -289,20 +312,38 @@ curl -o video_convertido.mp4 http://localhost:5173/api/jobs/184cc753.../download
 1. **Upload** — el archivo se sube via `POST /api/convert` (multipart/form-data)
 2. **Validacion** — extension `.mov` (case-insensitive) + magic bytes (`ftyp` en offset 4-7, subtipo valido en offset 8-11)
 3. **ffprobe** — extrae duracion, resolucion, codec de video/audio, FPS y tamaño del archivo
-4. **ffmpeg** — convierte a MP4 con este comando base:
+4. **ffmpeg** — convierte a MP4. Dos modos:
 
+**Modo Personalizado** (ajustes manuales):
 ```bash
 ffmpeg -i input.mov \
-  -c:v libx264          # Video: H.264
-  -crf 21               # Calidad (calculado del slider)
-  -preset medium         # Velocidad de codificacion
-  -c:a aac -b:a 128k    # Audio: AAC a 128 kbps
-  -movflags +faststart   # Atomo moov al inicio (streaming web)
-  -pix_fmt yuv420p       # Compatibilidad maxima
-  -vf scale=1280:-2      # Resolucion (solo si se reduce)
-  -progress pipe:1       # Emitir progreso por stdout
-  -y output.mp4
+  -c:v libx264 -crf 21 -preset medium \
+  -c:a aac -b:a 128k \
+  -movflags +faststart -pix_fmt yuv420p \
+  [-vf scale=1280:-2] [-vf ...,hflip] \
+  -progress pipe:1 -y output.mp4
 ```
+
+**Modo Plataforma** (ej. TikTok):
+```bash
+ffmpeg -i input.mov \
+  -c:v libx264 -crf 21 -preset medium \
+  -profile:v main -level 4.0 \
+  -vf crop=608:1080,hflip \      # Crop 9:16 + espejo si activado
+  -r 30 \                        # FPS cap
+  -maxrate 2500k -bufsize 5000k \ # Bitrate cap
+  -c:a aac -b:a 128k \
+  -movflags +faststart -pix_fmt yuv420p \
+  -progress pipe:1 -y output.mp4
+```
+
+| Plataforma | Resolucion max | Aspect Ratio | FPS max | Bitrate max | Perfil H.264 | Audio |
+|---|---|---|---|---|---|---|
+| Web | 1920x1080 | original | original | CRF only | main L4.0 | 128k |
+| TikTok | 1080x1920 | 9:16 (crop) | 30 | 2500k | main L4.0 | 128k |
+| Instagram Reels | 1080x1920 | 9:16 (crop) | 30 | 3500k | main L4.0 | 128k |
+| Instagram Feed | 1080x1080 | 1:1 (crop) | 30 | 3500k | main L4.0 | 128k |
+| YouTube | 3840x2160 | original | original | 8000k | high L4.1 | 192k |
 
 5. **Descarga** — el MP4 queda disponible en `/api/jobs/:id/download` con `Content-Disposition: attachment`
 
@@ -360,12 +401,12 @@ VideoMobMp4/
 ├── src/
 │   ├── js/
 │   │   ├── app.js          # UI: upload, SSE, progreso, descarga, estados
-│   │   └── converterCore.js # 11 funciones puras (validacion, CRF, formato)
+│   │   └── converterCore.js # Funciones puras (validacion, CRF, formato, presets plataforma)
 │   └── css/
 │       └── app.css         # Dark theme, BEM, responsive (mobile first)
 │
 ├── tests/unit/
-│   ├── converterCore.test.js  # 51 tests de funciones puras
+│   ├── converterCore.test.js  # 73 tests de funciones puras + presets plataforma
 │   └── server.test.js         # 7 tests de endpoints API
 │
 ├── e2e/fixtures/           # Videos de prueba generados con FFmpeg
@@ -436,7 +477,7 @@ POST /api/convert
 ## Tests
 
 ```bash
-npm test              # Ejecutar los 58 tests
+npm test              # Ejecutar los 80 tests
 npm run test:watch    # Tests en modo watch
 npm run create-fixture # Generar videos de prueba con FFmpeg
 ```
@@ -445,7 +486,7 @@ npm run create-fixture # Generar videos de prueba con FFmpeg
 
 | Archivo | Tests | Que verifica |
 |---------|:-----:|-------------|
-| `converterCore.test.js` | 51 | `validateMovExtension` (6), `validateMovMagicBytes` (6), `qualityToCRF` (7), `buildResolutionArgs` (5), `formatFileSize` (6), `formatDuration` (5), `formatETA` (4), `sanitizeFilename` (5), `calculateSavings` (3), `parseFFprobeOutput` (4) |
+| `converterCore.test.js` | 73 | `validateMovExtension` (6), `validateMovMagicBytes` (6), `qualityToCRF` (7), `buildResolutionArgs` (5), `formatFileSize` (6), `formatDuration` (5), `formatETA` (4), `sanitizeFilename` (5), `calculateSavings` (3), `parseFFprobeOutput` (4), `PLATFORM_PRESETS` (3), `getPlatformPreset` (2), `buildVideoFilterChain` (9), `buildPlatformArgs` (8) |
 | `server.test.js` | 7 | Health check, upload sin archivo, job inexistente, cancel inexistente, archivos estaticos, path traversal, 404 |
 
 ### Fixtures de prueba
@@ -483,7 +524,7 @@ El script `generate-fixture.sh` crea 4 archivos de prueba con FFmpeg:
 | `./run_app.sh` | Arranca servidor con verificacion de dependencias y port scanning |
 | `npm start` | Servidor en puerto por defecto (5173) |
 | `npm run dev` | Servidor con `--watch` (reinicia al guardar) |
-| `npm test` | Ejecutar 58 tests (Vitest) |
+| `npm test` | Ejecutar 80 tests (Vitest) |
 | `npm run test:watch` | Tests en modo watch |
 | `npm run create-fixture` | Generar videos MOV de prueba |
 | `NO_OPEN=1 npm start` | Arrancar sin abrir el navegador |

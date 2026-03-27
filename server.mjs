@@ -115,7 +115,7 @@ function checkRateLimit(ip) {
 // ─── Jobs system ─────────────────────────────────────────────────────────────
 const jobs = new Map();
 
-function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat) {
+function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat, mirror) {
   const id = uuidv4();
   const outputPath = path.join(CONVERTED_DIR, `${id}.mp4`);
   const job = {
@@ -130,6 +130,7 @@ function createJob(inputPath, originalFilename, sanitized, quality, resolution, 
     preset: preset || 'medium',
     platform: platform || 'custom',
     igFormat: igFormat || 'reels',
+    mirror: mirror === '1' || mirror === true,
     metadata: null,
     progress: { percent: 0, fps: 0, speed: '', elapsed: 0, eta: 0 },
     ffmpegProcess: null,
@@ -256,6 +257,18 @@ function startConversion(job) {
       job.outputPath,
     ];
     log('INFO', `Iniciando conversión: CRF ${qualityToCRF(job.quality)}, ${job.resolution}, preset ${job.preset}`, job.id);
+  }
+
+  // Inject hflip filter for mirror mode
+  if (job.mirror) {
+    const vfIdx = args.indexOf('-vf');
+    if (vfIdx !== -1) {
+      args[vfIdx + 1] += ',hflip';
+    } else {
+      // Find insertion point (before -progress)
+      const progIdx = args.indexOf('-progress');
+      args.splice(progIdx, 0, '-vf', 'hflip');
+    }
   }
 
   const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -569,6 +582,7 @@ export const server = http.createServer(async (req, res) => {
         fields.preset || 'medium',
         fields.platform || 'custom',
         fields.igFormat || 'reels',
+        fields.mirror || '0',
       );
       // Override the job id to match the one used for the file
       jobs.delete(job.id);

@@ -60,6 +60,8 @@ VideoMovMp4 es una aplicacion web de una sola pagina (SPA) que convierte archivo
 - Ajuste de calidad con mapeo CRF perceptual (no lineal)
 - Seleccion de resolucion (Original, 1080p, 720p, 480p) con proteccion contra ampliacion
 - Seleccion de preset de velocidad (ultrafast, fast, medium, slow)
+- Presets por plataforma: Web, TikTok (9:16), Instagram (Reels 9:16 / Feed 1:1), YouTube (H.264 High) con ajustes automaticos de resolucion, aspect ratio, fps, bitrate y perfil H.264
+- Espejo horizontal (filtro `hflip` de FFmpeg)
 - Cancelacion de conversiones en curso
 - Recuperacion automatica de sesion tras refresh del navegador
 - Reconexion SSE automatica con backoff exponencial
@@ -186,11 +188,11 @@ VideoMobMp4/
 │   │   └── app.css                # Dark theme, BEM, responsive
 │   └── js/
 │       ├── app.js                 # Logica UI: upload, SSE, estados, descarga
-│       └── converterCore.js       # 11 funciones puras sin dependencias
+│       └── converterCore.js       # Funciones puras sin dependencias + presets plataforma
 │
 ├── tests/
 │   └── unit/
-│       ├── converterCore.test.js  # 51 tests de funciones puras
+│       ├── converterCore.test.js  # 73 tests de funciones puras + presets
 │       └── server.test.js         # 7 tests de integracion de la API
 │
 ├── e2e/
@@ -396,6 +398,9 @@ Esto previene ataques como `/../../../etc/passwd` o `/%2e%2e%2f%2e%2e%2fetc%2fpa
   - `quality` (string, opcional): numero 1-100, default "75"
   - `resolution` (string, opcional): "original"|"1080p"|"720p"|"480p", default "original"
   - `preset` (string, opcional): "ultrafast"|"fast"|"medium"|"slow", default "medium"
+  - `platform` (string, opcional): "custom"|"web"|"tiktok"|"instagram"|"youtube", default "custom"
+  - `igFormat` (string, opcional): "reels"|"feed", default "reels" (solo aplica si platform="instagram")
+  - `mirror` (string, opcional): "0"|"1", default "0" (espejo horizontal)
 
 **Validaciones en orden:**
 1. Rate limiting por IP (5 req/min) → 429 si excedido
@@ -594,6 +599,9 @@ Cada conversion se gestiona como un "job" almacenado en un `Map` en memoria.
   quality: 75,                 // 1-100
   resolution: "1080p",         // "original"|"1080p"|"720p"|"480p"
   preset: "medium",            // "ultrafast"|"fast"|"medium"|"slow"
+  platform: "custom",          // "custom"|"web"|"tiktok"|"instagram"|"youtube"
+  igFormat: "reels",           // "reels"|"feed" (solo para Instagram)
+  mirror: false,               // true = aplicar espejo horizontal (hflip)
   metadata: {                  // De ffprobe (null hasta que complete)
     duration: 10.5,
     width: 1920,
@@ -682,21 +690,34 @@ Estos metadatos se almacenan en `job.metadata` y se envian al cliente como prime
 
 #### Paso 2: Conversion con FFmpeg
 
-La funcion `startConversion()` (lineas 213-331) construye y ejecuta el comando FFmpeg:
+La funcion `startConversion()` construye y ejecuta el comando FFmpeg. Hay dos paths:
 
+**Path Personalizado** (platform = "custom"):
 ```bash
 ffmpeg -i input.mov \
-  -c:v libx264 \
-  -crf 21 \
-  -preset medium \
+  -c:v libx264 -crf 21 -preset medium \
   -c:a aac -b:a 128k \
-  -movflags +faststart \
-  -pix_fmt yuv420p \
-  [-vf scale=1920:-2] \
-  -progress pipe:1 \
-  -y \
-  output.mp4
+  -movflags +faststart -pix_fmt yuv420p \
+  [-vf scale=1920:-2[,hflip]] \
+  -progress pipe:1 -y output.mp4
 ```
+
+**Path Plataforma** (platform = "web"|"tiktok"|"instagram"|"youtube"):
+Los args se generan con `buildPlatformArgs()` de `converterCore.js`, que aplica automaticamente profile, level, bitrate cap, fps cap, crop de aspect ratio y scale segun la plataforma seleccionada.
+
+```bash
+# Ejemplo: TikTok con espejo
+ffmpeg -i input.mov \
+  -c:v libx264 -crf 21 -preset medium \
+  -profile:v main -level 4.0 \
+  -vf crop=608:1080,hflip -r 30 \
+  -maxrate 2500k -bufsize 5000k \
+  -c:a aac -b:a 128k \
+  -movflags +faststart -pix_fmt yuv420p \
+  -progress pipe:1 -y output.mp4
+```
+
+Si `mirror=true`, el filtro `hflip` se inyecta en la cadena `-vf` (en ambos paths).
 
 **Flags explicados:**
 
@@ -852,9 +873,9 @@ La funcion `gracefulShutdown()` (lineas 694-733) se ejecuta al recibir `SIGTERM`
 
 ## 7. Funciones puras — converterCore.js
 
-Archivo: `src/js/converterCore.js` (126 lineas)
+Archivo: `src/js/converterCore.js`
 
-Este modulo contiene 11 funciones puras sin dependencias de DOM ni de Node.js. Se importa tanto en el servidor (`server.mjs`) como en el cliente (`app.js`).
+Este modulo contiene funciones puras y constantes sin dependencias de DOM ni de Node.js. Se importa tanto en el servidor (`server.mjs`) como en el cliente (`app.js`). Incluye funciones de validacion, formato, mapeo de calidad, y el sistema de presets por plataforma.
 
 ### 7.1 `validateMovExtension(filename)`
 
@@ -982,6 +1003,79 @@ Calculo de FPS: convierte `r_frame_rate` (ej: `"30000/1001"`) a decimal (ej: `29
 
 Devuelve `"file"` para `null`/`undefined`.
 
+### 7.11 `PLATFORM_PRESETS`
+
+**Tipo:** objeto exportado (constante).
+
+Define los presets de conversion por plataforma. Cada clave es un ID de plataforma (`custom`, `web`, `tiktok`, `instagram`, `youtube`) y su valor es un objeto con:
+
+| Propiedad | Tipo | Descripcion |
+|-----------|------|-------------|
+| `id` | string | Identificador del preset |
+| `label` | string | Nombre visible (en español) |
+| `description` | string | Descripcion corta |
+| `icon` | string | Clase Font Awesome |
+| `maxWidth` | number\|null | Ancho maximo de salida |
+| `maxHeight` | number\|null | Alto maximo de salida |
+| `maxFps` | number\|null | FPS maximo (null = mantener original) |
+| `maxBitrateKbps` | number\|null | Bitrate maximo en kbps (null = solo CRF) |
+| `audioBitrateKbps` | number | Bitrate de audio en kbps |
+| `profile` | string\|null | Perfil H.264 (`main`, `high`) |
+| `level` | string\|null | Nivel H.264 (`4.0`, `4.1`) |
+| `bframes` | number\|null | Valor `-bf` |
+| `aspectRatio` | string\|null | Aspect ratio destino (`9:16`, null = mantener) |
+
+El preset `custom` tiene todos los overrides a `null` (modo manual).
+
+### 7.12 `getPlatformPreset(platformId)`
+
+**Proposito:** lookup de preset con fallback a `custom` para IDs desconocidos.
+
+| Parametro | Tipo | Descripcion |
+|-----------|------|-------------|
+| `platformId` | string | ID del preset |
+| **Retorno** | object | Objeto preset de `PLATFORM_PRESETS` |
+
+### 7.13 `buildVideoFilterChain(preset, inputWidth, inputHeight, igFormat)`
+
+**Proposito:** construir la cadena de filtros `-vf` para un preset de plataforma.
+
+| Parametro | Tipo | Descripcion |
+|-----------|------|-------------|
+| `preset` | object | Objeto de `PLATFORM_PRESETS` |
+| `inputWidth` | number | Ancho del video original |
+| `inputHeight` | number | Alto del video original |
+| `igFormat` | string | `"reels"` o `"feed"` (solo para Instagram) |
+| **Retorno** | string | Cadena de filtros (ej: `"crop=608:1080,scale=1080:-2"`) o `""` |
+
+**Logica:**
+1. Si Instagram Feed → fuerza aspect ratio 1:1 y max 1080x1080
+2. Si el preset tiene `aspectRatio` → calcula crop centrado al aspect ratio destino
+3. Si las dimensiones resultantes exceden `maxWidth`/`maxHeight` → añade scale (solo reduce, nunca amplia)
+4. Todas las dimensiones se redondean a numeros pares (requisito H.264)
+
+### 7.14 `buildPlatformArgs(platformId, quality, inputWidth, inputHeight, inputFps, igFormat)`
+
+**Proposito:** generar el array completo de argumentos FFmpeg para un preset de plataforma.
+
+| Parametro | Tipo | Descripcion |
+|-----------|------|-------------|
+| `platformId` | string | ID del preset |
+| `quality` | number | Valor del slider (1-100) |
+| `inputWidth` | number | Ancho del video original |
+| `inputHeight` | number | Alto del video original |
+| `inputFps` | number | FPS del video original |
+| `igFormat` | string | `"reels"` o `"feed"` |
+| **Retorno** | string[]\|null | Array de args FFmpeg, o `null` si platformId es `"custom"` |
+
+**Args generados:**
+- `-c:v libx264 -crf {CRF} -preset medium`
+- `-profile:v`, `-level`, `-bf` (si aplican)
+- `-vf` con la cadena de `buildVideoFilterChain()` (si no vacia)
+- `-r {maxFps}` (si FPS de entrada excede el limite)
+- `-maxrate {kbps}k -bufsize {2x}k` (si el preset tiene bitrate cap)
+- `-c:a aac -b:a {audioBitrate}k`
+
 ---
 
 ## 8. Frontend — interfaz de usuario
@@ -1004,7 +1098,7 @@ Archivo de 237 lineas. SPA (Single Page Application) con estructura semantica HT
 | ID | Seccion | Visible cuando |
 |----|---------|---------------|
 | `panelUpload` | Zona de subida (drag & drop + file info) | `idle`, `configuring` |
-| `panelSettings` | Opciones de conversion (calidad, resolucion, preset) | `configuring` |
+| `panelSettings` | Opciones de conversion (plataforma, calidad, espejo, resolucion, preset) | `configuring` |
 | `panelProgress` | Barra de progreso + stats en tiempo real | `converting` |
 | `panelResult` | Preview + comparativa + descarga | `done` |
 | `panelError` | Mensaje de error + boton reintentar | `error` |
@@ -1078,7 +1172,7 @@ Archivo de 511 lineas. ES module vanilla.
 ```javascript
 import {
   validateMovExtension, validateMovMagicBytes, qualityToCRF,
-  formatFileSize, formatDuration, formatETA
+  formatFileSize, formatDuration, formatETA, PLATFORM_PRESETS
 } from './converterCore.js';
 ```
 
@@ -1092,6 +1186,7 @@ import {
 | `downloadUrl` | string\|null | URL de descarga del resultado |
 | `sseRetries` | number | Contador de reintentos SSE |
 | `uiState` | string | Estado actual de la UI |
+| `selectedPlatform` | string | Plataforma seleccionada (`"custom"`, `"web"`, `"tiktok"`, `"instagram"`, `"youtube"`) |
 
 ### 8.4 Maquina de estados de la UI
 
@@ -1280,7 +1375,7 @@ npm run test:watch    # Modo watch (vitest)
 
 ### 10.2 Tests de funciones puras (converterCore.test.js)
 
-Archivo: `tests/unit/converterCore.test.js` — 259 lineas, 51 tests.
+Archivo: `tests/unit/converterCore.test.js` — 73 tests.
 
 | Grupo `describe` | Tests | Que verifica |
 |-------------------|-------|-------------|
@@ -1294,6 +1389,10 @@ Archivo: `tests/unit/converterCore.test.js` — 259 lineas, 51 tests.
 | `sanitizeFilename` | 5 | Caracteres especiales, path traversal, truncar, null |
 | `calculateSavings` | 3 | Porcentaje, isSmaller true/false |
 | `parseFFprobeOutput` | 4 | JSON valido, invalido, extraccion de campos, sin video stream |
+| `PLATFORM_PRESETS` | 3 | Claves esperadas, propiedades requeridas, custom.maxWidth null |
+| `getPlatformPreset` | 2 | Lookup correcto, fallback a custom |
+| `buildVideoFilterChain` | 9 | Crop 9:16 desde landscape, sin filtro para vertical nativo, no upscale, crop 1:1 Instagram Feed, scale Web 4K, sin filtro para dimensiones que encajan |
+| `buildPlatformArgs` | 8 | Null para custom, profile/level por plataforma, fps cap, maxrate, YouTube bf/audio, calidad variable, codecs presentes |
 
 **Helper de test:**
 ```javascript
@@ -1420,15 +1519,19 @@ Descripcion paso a paso de una conversion exitosa:
      ↓
 3. FRONTEND muestra preview del video y panel de opciones
      ↓
-4. USUARIO ajusta calidad (75), resolucion (720p), preset (medium)
+4. USUARIO selecciona plataforma (ej. TikTok) o "Personalizado"
+   - Si plataforma seleccionada: controles de resolucion/preset se ocultan
+   - Ajusta calidad (75), opcionalmente activa espejo horizontal
      ↓
 5. USUARIO pulsa "Convertir a MP4" (o Ctrl+Enter)
      ↓
 6. FRONTEND envia POST /api/convert con FormData:
    - video: archivo MOV
    - quality: "75"
-   - resolution: "720p"
-   - preset: "medium"
+   - resolution: "720p" (solo en modo Personalizado)
+   - preset: "medium" (solo en modo Personalizado)
+   - platform: "tiktok"
+   - mirror: "0"
      ↓
 7. SERVIDOR (server.mjs) recibe la peticion:
    a. Rate limit: ¿< 5 req/min para esta IP? → Si
@@ -1450,10 +1553,13 @@ Descripcion paso a paso de una conversion exitosa:
      ↓
 10. FRONTEND recibe metadata, muestra tarjetas informativas
       ↓
-11. SERVIDOR ejecuta ffmpeg:
+11. SERVIDOR ejecuta ffmpeg (segun plataforma o modo personalizado):
+    # Ejemplo TikTok:
     ffmpeg -i input.mov -c:v libx264 -crf 21 -preset medium
-           -c:a aac -b:a 128k -movflags +faststart -pix_fmt yuv420p
-           -vf scale=1280:-2 -progress pipe:1 -y output.mp4
+           -profile:v main -level 4.0 -vf crop=608:1080 -r 30
+           -maxrate 2500k -bufsize 5000k -c:a aac -b:a 128k
+           -movflags +faststart -pix_fmt yuv420p -progress pipe:1 -y output.mp4
+    # Si mirror activado, se añade hflip a la cadena -vf
       ↓
 12. SERVIDOR parsea progreso de stdout (cada bloque "progress=continue"):
     - Calcula percent, fps, speed, elapsed, eta

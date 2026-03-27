@@ -56,6 +56,7 @@ const platformGrid = $('#platformGrid');
 const platformHint = $('#platformHint');
 const instagramFormat = $('#instagramFormat');
 const settingsGrid = $('#settingsGrid');
+const mirrorCheckbox = $('#mirrorCheckbox');
 
 // ─── Notyf ───────────────────────────────────────────────────────────────────
 const notyf = new Notyf({
@@ -229,6 +230,7 @@ async function startConversion() {
   formData.append('resolution', resolutionSelect.value);
   formData.append('preset', presetSelect.value);
   formData.append('platform', selectedPlatform);
+  formData.append('mirror', mirrorCheckbox.checked ? '1' : '0');
   if (selectedPlatform === 'instagram') {
     const igFormat = document.querySelector('input[name="igFormat"]:checked')?.value || 'reels';
     formData.append('igFormat', igFormat);
@@ -439,6 +441,8 @@ function resetAll() {
   presetSelect.value = 'medium';
   updateQualityUI();
   resInfo.textContent = '';
+
+  mirrorCheckbox.checked = false;
 
   // Reset platform selection
   selectedPlatform = 'custom';
