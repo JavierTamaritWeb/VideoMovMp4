@@ -123,3 +123,185 @@ export function sanitizeFilename(name) {
   if (safe.length > 200) safe = safe.substring(0, 200);
   return safe;
 }
+
+// ─── Platform Presets ───────────────────────────────────────────────────────
+
+export const PLATFORM_PRESETS = {
+  custom: {
+    id: 'custom',
+    label: 'Personalizado',
+    description: 'Controla todos los ajustes manualmente',
+    icon: 'fa-solid fa-sliders',
+    maxWidth: null,
+    maxHeight: null,
+    maxFps: null,
+    maxBitrateKbps: null,
+    audioBitrateKbps: 128,
+    profile: null,
+    level: null,
+    bframes: null,
+    aspectRatio: null,
+  },
+  web: {
+    id: 'web',
+    label: 'Web',
+    description: 'Optimizado para sitios web y carga rápida',
+    icon: 'fa-solid fa-globe',
+    maxWidth: 1920,
+    maxHeight: 1080,
+    maxFps: null,
+    maxBitrateKbps: null,
+    audioBitrateKbps: 128,
+    profile: 'main',
+    level: '4.0',
+    bframes: null,
+    aspectRatio: null,
+  },
+  tiktok: {
+    id: 'tiktok',
+    label: 'TikTok',
+    description: 'Vertical 9:16, máx. 1080×1920, 30 fps',
+    icon: 'fa-brands fa-tiktok',
+    maxWidth: 1080,
+    maxHeight: 1920,
+    maxFps: 30,
+    maxBitrateKbps: 2500,
+    audioBitrateKbps: 128,
+    profile: 'main',
+    level: '4.0',
+    bframes: null,
+    aspectRatio: '9:16',
+  },
+  instagram: {
+    id: 'instagram',
+    label: 'Instagram',
+    description: 'Reels 9:16 o Feed 1:1, máx. 1080p, 30 fps',
+    icon: 'fa-brands fa-instagram',
+    maxWidth: 1080,
+    maxHeight: 1920,
+    maxFps: 30,
+    maxBitrateKbps: 3500,
+    audioBitrateKbps: 128,
+    profile: 'main',
+    level: '4.0',
+    bframes: null,
+    aspectRatio: '9:16',
+  },
+  youtube: {
+    id: 'youtube',
+    label: 'YouTube',
+    description: 'Alta calidad, H.264 High, hasta 4K',
+    icon: 'fa-brands fa-youtube',
+    maxWidth: 3840,
+    maxHeight: 2160,
+    maxFps: null,
+    maxBitrateKbps: 8000,
+    audioBitrateKbps: 192,
+    profile: 'high',
+    level: '4.1',
+    bframes: 2,
+    aspectRatio: null,
+  },
+};
+
+export function getPlatformPreset(platformId) {
+  return PLATFORM_PRESETS[platformId] || PLATFORM_PRESETS.custom;
+}
+
+function makeEven(n) {
+  return 2 * Math.floor(n / 2);
+}
+
+export function buildVideoFilterChain(preset, inputWidth, inputHeight, igFormat) {
+  if (!inputWidth || !inputHeight) return '';
+
+  let targetAR = null;
+  let maxW = preset.maxWidth;
+  let maxH = preset.maxHeight;
+
+  // Instagram Feed overrides to 1:1
+  if (preset.id === 'instagram' && igFormat === 'feed') {
+    targetAR = 1;
+    maxW = 1080;
+    maxH = 1080;
+  } else if (preset.aspectRatio) {
+    const [arW, arH] = preset.aspectRatio.split(':').map(Number);
+    targetAR = arW / arH;
+  }
+
+  const filters = [];
+
+  let currentW = inputWidth;
+  let currentH = inputHeight;
+
+  // Crop to target aspect ratio if needed
+  if (targetAR !== null) {
+    const inputAR = inputWidth / inputHeight;
+    if (Math.abs(inputAR - targetAR) > 0.01) {
+      let cropW, cropH;
+      if (inputAR > targetAR) {
+        // Input is wider → crop width
+        cropH = inputHeight;
+        cropW = makeEven(Math.round(inputHeight * targetAR));
+      } else {
+        // Input is taller → crop height
+        cropW = inputWidth;
+        cropH = makeEven(Math.round(inputWidth / targetAR));
+      }
+      filters.push(`crop=${cropW}:${cropH}`);
+      currentW = cropW;
+      currentH = cropH;
+    }
+  }
+
+  // Scale down if exceeds max dimensions (never upscale)
+  if (maxW && maxH) {
+    if (currentW > maxW || currentH > maxH) {
+      const scaleByW = maxW / currentW;
+      const scaleByH = maxH / currentH;
+      const scaleFactor = Math.min(scaleByW, scaleByH);
+      const newW = makeEven(Math.round(currentW * scaleFactor));
+      filters.push(`scale=${newW}:-2`);
+    }
+  }
+
+  return filters.join(',');
+}
+
+export function buildPlatformArgs(platformId, quality, inputWidth, inputHeight, inputFps, igFormat) {
+  const preset = getPlatformPreset(platformId);
+  if (preset.id === 'custom') return null;
+
+  const crf = qualityToCRF(quality);
+  const args = [];
+
+  // Video codec
+  args.push('-c:v', 'libx264');
+  args.push('-crf', String(crf));
+  args.push('-preset', 'medium');
+
+  // Profile and level
+  if (preset.profile) args.push('-profile:v', preset.profile);
+  if (preset.level) args.push('-level', preset.level);
+  if (preset.bframes != null) args.push('-bf', String(preset.bframes));
+
+  // Video filter chain
+  const vf = buildVideoFilterChain(preset, inputWidth, inputHeight, igFormat);
+  if (vf) args.push('-vf', vf);
+
+  // FPS cap
+  if (preset.maxFps && inputFps > preset.maxFps) {
+    args.push('-r', String(preset.maxFps));
+  }
+
+  // Bitrate cap (VBV)
+  if (preset.maxBitrateKbps) {
+    args.push('-maxrate', `${preset.maxBitrateKbps}k`);
+    args.push('-bufsize', `${preset.maxBitrateKbps * 2}k`);
+  }
+
+  // Audio
+  args.push('-c:a', 'aac', '-b:a', `${preset.audioBitrateKbps}k`);
+
+  return args;
+}

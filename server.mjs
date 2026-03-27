@@ -15,6 +15,7 @@ import {
   parseFFprobeOutput,
   sanitizeFilename,
   formatFileSize,
+  buildPlatformArgs,
 } from './src/js/converterCore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -114,7 +115,7 @@ function checkRateLimit(ip) {
 // ─── Jobs system ─────────────────────────────────────────────────────────────
 const jobs = new Map();
 
-function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset) {
+function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat) {
   const id = uuidv4();
   const outputPath = path.join(CONVERTED_DIR, `${id}.mp4`);
   const job = {
@@ -127,6 +128,8 @@ function createJob(inputPath, originalFilename, sanitized, quality, resolution, 
     quality: parseInt(quality) || 75,
     resolution: resolution || 'original',
     preset: preset || 'medium',
+    platform: platform || 'custom',
+    igFormat: igFormat || 'reels',
     metadata: null,
     progress: { percent: 0, fps: 0, speed: '', elapsed: 0, eta: 0 },
     ffmpegProcess: null,
@@ -211,26 +214,49 @@ function probeFile(filePath) {
 
 // ─── FFmpeg conversion ───────────────────────────────────────────────────────
 function startConversion(job) {
-  const crf = qualityToCRF(job.quality);
-  const resArgs = job.metadata
-    ? buildResolutionArgs(job.resolution, job.metadata.width, job.metadata.height)
-    : [];
+  let args;
+  const platformArgs = (job.platform && job.platform !== 'custom')
+    ? buildPlatformArgs(
+        job.platform,
+        job.quality,
+        job.metadata?.width || 0,
+        job.metadata?.height || 0,
+        job.metadata?.fps || 0,
+        job.igFormat,
+      )
+    : null;
 
-  const args = [
-    '-i', job.inputPath,
-    '-c:v', 'libx264',
-    '-crf', String(crf),
-    '-preset', job.preset,
-    '-c:a', 'aac', '-b:a', '128k',
-    '-movflags', '+faststart',
-    '-pix_fmt', 'yuv420p',
-    ...resArgs,
-    '-progress', 'pipe:1',
-    '-y',
-    job.outputPath,
-  ];
-
-  log('INFO', `Iniciando conversión: CRF ${crf}, ${job.resolution}, preset ${job.preset}`, job.id);
+  if (platformArgs) {
+    args = [
+      '-i', job.inputPath,
+      ...platformArgs,
+      '-movflags', '+faststart',
+      '-pix_fmt', 'yuv420p',
+      '-progress', 'pipe:1',
+      '-y',
+      job.outputPath,
+    ];
+    log('INFO', `Iniciando conversión [${job.platform}]: calidad ${job.quality}`, job.id);
+  } else {
+    const crf = qualityToCRF(job.quality);
+    const resArgs = job.metadata
+      ? buildResolutionArgs(job.resolution, job.metadata.width, job.metadata.height)
+      : [];
+    args = [
+      '-i', job.inputPath,
+      '-c:v', 'libx264',
+      '-crf', String(crf),
+      '-preset', job.preset,
+      '-c:a', 'aac', '-b:a', '128k',
+      '-movflags', '+faststart',
+      '-pix_fmt', 'yuv420p',
+      ...resArgs,
+      '-progress', 'pipe:1',
+      '-y',
+      job.outputPath,
+    ];
+    log('INFO', `Iniciando conversión: CRF ${qualityToCRF(job.quality)}, ${job.resolution}, preset ${job.preset}`, job.id);
+  }
 
   const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
   job.ffmpegProcess = proc;
@@ -541,6 +567,8 @@ export const server = http.createServer(async (req, res) => {
         fields.quality || '75',
         fields.resolution || 'original',
         fields.preset || 'medium',
+        fields.platform || 'custom',
+        fields.igFormat || 'reels',
       );
       // Override the job id to match the one used for the file
       jobs.delete(job.id);

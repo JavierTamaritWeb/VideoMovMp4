@@ -414,6 +414,89 @@ body {
   justify-content: center;
 }
 
+/* ─── Platform Cards ─────────────────────────────────────────────────── */
+
+.settings__group--platform {
+  grid-column: 1 / -1;
+}
+
+.settings__platform-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.settings__platform-card {
+  background: var(--bg-elevated);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.settings__platform-card:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-surface);
+}
+
+.settings__platform-card--active {
+  border-color: var(--accent-primary);
+  background: rgba(124, 58, 237, 0.08);
+}
+
+.settings__platform-card i {
+  font-size: 1.4rem;
+  color: var(--accent-secondary);
+  margin-bottom: 0.2rem;
+}
+
+.settings__platform-card--active i {
+  color: var(--accent-primary);
+}
+
+.settings__platform-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.settings__platform-desc {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.settings__sub-format {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-elevated);
+  border-radius: var(--radius);
+}
+
+.settings__sub-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.settings__sub-option {
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.settings__grid--platform-active .settings__group--manual {
+  display: none;
+}
+
 /* ─── Meta Cards ─────────────────────────────────────────────────────────── */
 
 .meta-cards {
@@ -638,6 +721,7 @@ body {
   .upload__icon { font-size: 2rem; }
   .upload__preview-wrap { display: none; }
   .upload__fileinfo { flex-direction: column; text-align: center; }
+  .settings__platform-grid { grid-template-columns: repeat(2, 1fr); }
   .settings__slider-wrap { flex-direction: column; align-items: stretch; }
   .settings__slider-info { min-width: 0; justify-content: center; }
   .progress__stats { grid-template-columns: repeat(2, 1fr); }
@@ -652,7 +736,8 @@ body {
   .settings__grid {
     grid-template-columns: 1fr 1fr;
   }
-  .settings__group:first-child {
+  .settings__group--platform,
+  .settings__group--quality {
     grid-column: 1 / -1;
   }
 }

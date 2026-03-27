@@ -64,9 +64,56 @@
     <section class="panel panel--settings" id="panelSettings" hidden aria-label="Opciones de conversión">
       <h2 class="panel__title"><i class="fa-solid fa-sliders"></i> Opciones de conversión</h2>
 
-      <div class="settings__grid">
+      <div class="settings__grid" id="settingsGrid">
+        <!-- Platform format -->
+        <fieldset class="settings__group settings__group--platform">
+          <legend class="settings__label">Formato de plataforma</legend>
+          <div class="settings__platform-grid" id="platformGrid">
+            <label class="settings__platform-card settings__platform-card--active" data-platform="custom">
+              <input type="radio" name="platform" value="custom" checked hidden>
+              <i class="fa-solid fa-sliders"></i>
+              <span class="settings__platform-name">Personalizado</span>
+              <span class="settings__platform-desc">Controla todos los ajustes</span>
+            </label>
+            <label class="settings__platform-card" data-platform="web">
+              <input type="radio" name="platform" value="web" hidden>
+              <i class="fa-solid fa-globe"></i>
+              <span class="settings__platform-name">Web</span>
+              <span class="settings__platform-desc">Sitios web, carga rápida</span>
+            </label>
+            <label class="settings__platform-card" data-platform="tiktok">
+              <input type="radio" name="platform" value="tiktok" hidden>
+              <i class="fa-brands fa-tiktok"></i>
+              <span class="settings__platform-name">TikTok</span>
+              <span class="settings__platform-desc">Vertical 9:16, 30 fps</span>
+            </label>
+            <label class="settings__platform-card" data-platform="instagram">
+              <input type="radio" name="platform" value="instagram" hidden>
+              <i class="fa-brands fa-instagram"></i>
+              <span class="settings__platform-name">Instagram</span>
+              <span class="settings__platform-desc">Reels 9:16, 30 fps</span>
+            </label>
+            <label class="settings__platform-card" data-platform="youtube">
+              <input type="radio" name="platform" value="youtube" hidden>
+              <i class="fa-brands fa-youtube"></i>
+              <span class="settings__platform-name">YouTube</span>
+              <span class="settings__platform-desc">Alta calidad, H.264 High</span>
+            </label>
+          </div>
+          <div class="settings__sub-format" id="instagramFormat" hidden>
+            <span class="settings__sub-label">Formato:</span>
+            <label class="settings__sub-option">
+              <input type="radio" name="igFormat" value="reels" checked> Reels (9:16)
+            </label>
+            <label class="settings__sub-option">
+              <input type="radio" name="igFormat" value="feed"> Feed (1:1)
+            </label>
+          </div>
+          <p class="settings__hint" id="platformHint"></p>
+        </fieldset>
+
         <!-- Quality -->
-        <fieldset class="settings__group">
+        <fieldset class="settings__group settings__group--quality">
           <legend class="settings__label">Calidad de vídeo</legend>
           <div class="settings__slider-wrap">
             <input type="range" id="qualitySlider" min="1" max="100" value="75" class="settings__slider" aria-label="Calidad de vídeo">
@@ -83,7 +130,7 @@
         </fieldset>
 
         <!-- Resolution -->
-        <fieldset class="settings__group">
+        <fieldset class="settings__group settings__group--manual">
           <legend class="settings__label">Resolución</legend>
           <div class="settings__select-wrap">
             <select id="resolutionSelect" class="settings__select" aria-label="Resolución de salida">
@@ -97,7 +144,7 @@
         </fieldset>
 
         <!-- Preset -->
-        <fieldset class="settings__group">
+        <fieldset class="settings__group settings__group--manual">
           <legend class="settings__label">Velocidad de codificación</legend>
           <select id="presetSelect" class="settings__select" aria-label="Preset de codificación">
             <option value="ultrafast">Ultrarrápido</option>

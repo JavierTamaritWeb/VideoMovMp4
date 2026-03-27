@@ -10,6 +10,10 @@ import {
   calculateSavings,
   parseFFprobeOutput,
   sanitizeFilename,
+  PLATFORM_PRESETS,
+  getPlatformPreset,
+  buildVideoFilterChain,
+  buildPlatformArgs,
 } from '../../src/js/converterCore.js';
 
 // Helper: build fake magic bytes
@@ -254,5 +258,146 @@ describe('parseFFprobeOutput', () => {
       format: { duration: '10' },
     });
     expect(parseFFprobeOutput(noVideo)).toBeNull();
+  });
+});
+
+// ─── Platform Presets ───────────────────────────────────────────────────────
+
+describe('PLATFORM_PRESETS', () => {
+  it('contiene todas las plataformas esperadas', () => {
+    expect(Object.keys(PLATFORM_PRESETS)).toEqual(
+      expect.arrayContaining(['custom', 'web', 'tiktok', 'instagram', 'youtube'])
+    );
+  });
+  it('cada preset tiene las propiedades requeridas', () => {
+    for (const preset of Object.values(PLATFORM_PRESETS)) {
+      expect(preset).toHaveProperty('id');
+      expect(preset).toHaveProperty('label');
+      expect(preset).toHaveProperty('audioBitrateKbps');
+    }
+  });
+  it('custom tiene maxWidth null', () => {
+    expect(PLATFORM_PRESETS.custom.maxWidth).toBeNull();
+  });
+});
+
+describe('getPlatformPreset', () => {
+  it('devuelve el preset correcto por id', () => {
+    expect(getPlatformPreset('tiktok').id).toBe('tiktok');
+    expect(getPlatformPreset('youtube').id).toBe('youtube');
+  });
+  it('devuelve custom para id desconocido', () => {
+    expect(getPlatformPreset('unknown').id).toBe('custom');
+    expect(getPlatformPreset(null).id).toBe('custom');
+    expect(getPlatformPreset(undefined).id).toBe('custom');
+  });
+});
+
+describe('buildVideoFilterChain', () => {
+  const tiktokPreset = PLATFORM_PRESETS.tiktok;
+  const webPreset = PLATFORM_PRESETS.web;
+  const igPreset = PLATFORM_PRESETS.instagram;
+  const ytPreset = PLATFORM_PRESETS.youtube;
+
+  it('landscape 1920×1080 con TikTok → crop a 9:16 + scale', () => {
+    const vf = buildVideoFilterChain(tiktokPreset, 1920, 1080);
+    expect(vf).toContain('crop=');
+    // Cropped width should be 9/16 * 1080 ≈ 608 (even)
+    expect(vf).toMatch(/crop=60[68]:1080/);
+  });
+
+  it('portrait 1080×1920 con TikTok → sin filtro (ya encaja)', () => {
+    const vf = buildVideoFilterChain(tiktokPreset, 1080, 1920);
+    expect(vf).toBe('');
+  });
+
+  it('portrait pequeño 720×1280 con TikTok → sin scale (no ampliar)', () => {
+    const vf = buildVideoFilterChain(tiktokPreset, 720, 1280);
+    expect(vf).toBe('');
+  });
+
+  it('landscape 1920×1080 con Instagram Feed → crop 1:1', () => {
+    const vf = buildVideoFilterChain(igPreset, 1920, 1080, 'feed');
+    expect(vf).toContain('crop=1080:1080');
+  });
+
+  it('cuadrado 1080×1080 con Instagram Feed → sin filtro', () => {
+    const vf = buildVideoFilterChain(igPreset, 1080, 1080, 'feed');
+    expect(vf).toBe('');
+  });
+
+  it('4K landscape con Web → scale a 1920', () => {
+    const vf = buildVideoFilterChain(webPreset, 3840, 2160);
+    expect(vf).toContain('scale=1920:-2');
+  });
+
+  it('720p con Web → sin filtro (no excede 1920×1080)', () => {
+    const vf = buildVideoFilterChain(webPreset, 1280, 720);
+    expect(vf).toBe('');
+  });
+
+  it('4K con YouTube → sin filtro (no excede 3840×2160)', () => {
+    const vf = buildVideoFilterChain(ytPreset, 3840, 2160);
+    expect(vf).toBe('');
+  });
+
+  it('input 0×0 → string vacío', () => {
+    expect(buildVideoFilterChain(tiktokPreset, 0, 0)).toBe('');
+  });
+});
+
+describe('buildPlatformArgs', () => {
+  it('custom → null', () => {
+    expect(buildPlatformArgs('custom', 75, 1920, 1080, 30)).toBeNull();
+  });
+
+  it('web → contiene -profile:v main, -level 4.0', () => {
+    const args = buildPlatformArgs('web', 75, 1920, 1080, 30);
+    expect(args).toContain('-profile:v');
+    expect(args[args.indexOf('-profile:v') + 1]).toBe('main');
+    expect(args).toContain('-level');
+    expect(args[args.indexOf('-level') + 1]).toBe('4.0');
+  });
+
+  it('tiktok con 60fps → incluye -r 30', () => {
+    const args = buildPlatformArgs('tiktok', 75, 1080, 1920, 60);
+    expect(args).toContain('-r');
+    expect(args[args.indexOf('-r') + 1]).toBe('30');
+  });
+
+  it('tiktok con 24fps → no incluye -r', () => {
+    const args = buildPlatformArgs('tiktok', 75, 1080, 1920, 24);
+    expect(args).not.toContain('-r');
+  });
+
+  it('tiktok → incluye -maxrate 2500k', () => {
+    const args = buildPlatformArgs('tiktok', 75, 1080, 1920, 30);
+    expect(args).toContain('-maxrate');
+    expect(args[args.indexOf('-maxrate') + 1]).toBe('2500k');
+  });
+
+  it('youtube → incluye -profile:v high, -bf 2, -b:a 192k', () => {
+    const args = buildPlatformArgs('youtube', 75, 1920, 1080, 30);
+    expect(args[args.indexOf('-profile:v') + 1]).toBe('high');
+    expect(args).toContain('-bf');
+    expect(args[args.indexOf('-bf') + 1]).toBe('2');
+    expect(args).toContain('-b:a');
+    expect(args[args.indexOf('-b:a') + 1]).toBe('192k');
+  });
+
+  it('calidad variable produce CRF diferente', () => {
+    const argsLow = buildPlatformArgs('web', 25, 1920, 1080, 30);
+    const argsHigh = buildPlatformArgs('web', 100, 1920, 1080, 30);
+    const crfLow = argsLow[argsLow.indexOf('-crf') + 1];
+    const crfHigh = argsHigh[argsHigh.indexOf('-crf') + 1];
+    expect(Number(crfLow)).toBeGreaterThan(Number(crfHigh));
+  });
+
+  it('siempre incluye -c:v libx264 y -c:a aac', () => {
+    for (const platform of ['web', 'tiktok', 'instagram', 'youtube']) {
+      const args = buildPlatformArgs(platform, 75, 1920, 1080, 30);
+      expect(args).toContain('-c:v');
+      expect(args).toContain('-c:a');
+    }
   });
 });

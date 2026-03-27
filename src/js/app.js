@@ -5,6 +5,7 @@ import {
   formatFileSize,
   formatDuration,
   formatETA,
+  PLATFORM_PRESETS,
 } from './converterCore.js';
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -51,6 +52,10 @@ const progressText = $('#progressText');
 const metaCards = $('#metaCards');
 const resultPreview = $('#resultPreview');
 const errorMessage = $('#errorMessage');
+const platformGrid = $('#platformGrid');
+const platformHint = $('#platformHint');
+const instagramFormat = $('#instagramFormat');
+const settingsGrid = $('#settingsGrid');
 
 // ─── Notyf ───────────────────────────────────────────────────────────────────
 const notyf = new Notyf({
@@ -61,6 +66,25 @@ const notyf = new Notyf({
     { type: 'success', background: '#10B981' },
     { type: 'error', background: '#EF4444' },
   ],
+});
+
+// ─── Platform Selection ──────────────────────────────────────────────────────
+let selectedPlatform = 'custom';
+
+platformGrid.addEventListener('change', (e) => {
+  if (e.target.name !== 'platform') return;
+  selectedPlatform = e.target.value;
+
+  for (const card of platformGrid.querySelectorAll('.settings__platform-card')) {
+    card.classList.toggle('settings__platform-card--active', card.dataset.platform === selectedPlatform);
+  }
+
+  const isCustom = selectedPlatform === 'custom';
+  settingsGrid.classList.toggle('settings__grid--platform-active', !isCustom);
+  instagramFormat.hidden = selectedPlatform !== 'instagram';
+
+  const preset = PLATFORM_PRESETS[selectedPlatform];
+  platformHint.textContent = isCustom ? '' : preset.description;
 });
 
 // ─── UI State Machine ────────────────────────────────────────────────────────
@@ -204,6 +228,11 @@ async function startConversion() {
   formData.append('quality', qualitySlider.value);
   formData.append('resolution', resolutionSelect.value);
   formData.append('preset', presetSelect.value);
+  formData.append('platform', selectedPlatform);
+  if (selectedPlatform === 'instagram') {
+    const igFormat = document.querySelector('input[name="igFormat"]:checked')?.value || 'reels';
+    formData.append('igFormat', igFormat);
+  }
 
   try {
     const resp = await fetch('/api/convert', { method: 'POST', body: formData });
@@ -410,6 +439,18 @@ function resetAll() {
   presetSelect.value = 'medium';
   updateQualityUI();
   resInfo.textContent = '';
+
+  // Reset platform selection
+  selectedPlatform = 'custom';
+  for (const card of platformGrid.querySelectorAll('.settings__platform-card')) {
+    card.classList.toggle('settings__platform-card--active', card.dataset.platform === 'custom');
+  }
+  const customRadio = platformGrid.querySelector('input[value="custom"]');
+  if (customRadio) customRadio.checked = true;
+  settingsGrid.classList.remove('settings__grid--platform-active');
+  instagramFormat.hidden = true;
+  platformHint.textContent = '';
+
   setState('idle');
 }
 
