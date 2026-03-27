@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm test:*)",
+      "WebSearch",
+      "Bash(ffmpeg -version)",
+      "Bash(npx vitest:*)",
+      "Bash(chmod +x /Users/imac_mini_javi/Documents/WEB/FRONTEND_TOOLS/VideoMobMp4/videoforge/e2e/fixtures/generate-fixture.sh)",
+      "Bash(bash /Users/imac_mini_javi/Documents/WEB/FRONTEND_TOOLS/VideoMobMp4/videoforge/e2e/fixtures/generate-fixture.sh)",
+      "Bash(npx playwright:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.js\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.wasm\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/worker.js\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js\")",
+      "Bash(find /Users/imac_mini_javi/Documents/WEB/FRONTEND_TOOLS -type f \\\\\\(-name *.js -o -name *.mjs -o -name *.ts \\\\\\) -not -path */node_modules/*)",
+      "Bash(grep -rn \"multer\\\\|upload\\\\|progress\" /Users/imac_mini_javi/Documents/WEB/PROYECTOS --include=*.js --include=package.json)",
+      "Bash(grep -r \"writeFile\\\\|readFile\\\\|unlink\\\\|temp\\\\|tmpdir\\\\|progress\" /Users/imac_mini_javi/Documents/WEB/FRONTEND_TOOLS/sound_fix --include=*.js --include=*.mjs)",
+      "Bash(npm init:*)",
+      "Bash(ffprobe -version)",
+      "Bash(chmod:*)",
+      "Bash(bash /Users/imac_mini_javi/Documents/WEB/FRONTEND_TOOLS/VideoMobMp4/e2e/fixtures/generate-fixture.sh 2>&1)"
+    ]
+  }
+}

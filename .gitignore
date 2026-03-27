@@ -1,0 +1,15 @@
+node_modules/
+npm-debug.log*
+coverage/
+.DS_Store
+.env
+.env.*
+.vscode/
+.idea/
+*.log
+# VideoMovMp4 temporal
+uploads/
+converted/
+*.mp4
+*.mov
+!e2e/fixtures/*.mov
