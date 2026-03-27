@@ -16,6 +16,7 @@ import {
   sanitizeFilename,
   formatFileSize,
   buildPlatformArgs,
+  buildWatermarkFilter,
 } from './src/js/converterCore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -115,7 +116,7 @@ function checkRateLimit(ip) {
 // ─── Jobs system ─────────────────────────────────────────────────────────────
 const jobs = new Map();
 
-function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat, mirror) {
+function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat, mirror, watermarkPath, watermarkPosition, watermarkSize) {
   const id = uuidv4();
   const outputPath = path.join(CONVERTED_DIR, `${id}.mp4`);
   const job = {
@@ -131,6 +132,9 @@ function createJob(inputPath, originalFilename, sanitized, quality, resolution, 
     platform: platform || 'custom',
     igFormat: igFormat || 'reels',
     mirror: mirror === '1' || mirror === true,
+    watermarkPath: watermarkPath || null,
+    watermarkPosition: watermarkPosition || 'bottom-right',
+    watermarkSize: parseInt(watermarkSize) || 20,
     metadata: null,
     progress: { percent: 0, fps: 0, speed: '', elapsed: 0, eta: 0 },
     ffmpegProcess: null,
@@ -161,6 +165,9 @@ function broadcastSSE(job, event) {
 async function cleanupJob(job) {
   try { await fs.unlink(job.inputPath).catch(() => {}); } catch {}
   try { await fs.unlink(job.outputPath).catch(() => {}); } catch {}
+  if (job.watermarkPath) {
+    try { await fs.unlink(job.watermarkPath).catch(() => {}); } catch {}
+  }
 }
 
 // Periodic cleanup of completed/errored jobs
@@ -265,10 +272,39 @@ function startConversion(job) {
     if (vfIdx !== -1) {
       args[vfIdx + 1] += ',hflip';
     } else {
-      // Find insertion point (before -progress)
       const progIdx = args.indexOf('-progress');
       args.splice(progIdx, 0, '-vf', 'hflip');
     }
+  }
+
+  // Inject watermark overlay (requires -filter_complex instead of -vf)
+  if (job.watermarkPath) {
+    const { scaleFilter, overlayFilter } = buildWatermarkFilter(job.watermarkPosition, job.watermarkSize);
+
+    // Add watermark as second input right after the first -i
+    const firstInputIdx = args.indexOf('-i');
+    args.splice(firstInputIdx + 2, 0, '-i', job.watermarkPath);
+
+    // Extract and remove any existing -vf filter
+    const vfIdx = args.indexOf('-vf');
+    let videoFilters = '';
+    if (vfIdx !== -1) {
+      videoFilters = args[vfIdx + 1];
+      args.splice(vfIdx, 2);
+    }
+
+    // Build filter_complex graph:
+    //   [0:v]{existing filters}[main]; {watermark scale}; [main][wm]overlay=x:y[v]
+    const mainChain = videoFilters
+      ? `[0:v]${videoFilters}[main]`
+      : '[0:v]copy[main]';
+    const overlay = overlayFilter.replace('[0:v]', '[main]');
+    const filterComplex = `${mainChain};${scaleFilter};${overlay}[v]`;
+
+    const progIdx = args.indexOf('-progress');
+    args.splice(progIdx, 0, '-filter_complex', filterComplex, '-map', '[v]', '-map', '0:a?');
+
+    log('INFO', `Marca de agua: pos=${job.watermarkPosition}, tamaño=${job.watermarkSize}%`, job.id);
   }
 
   const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -415,8 +451,7 @@ function parseMultipart(req) {
       const boundaryBuf = Buffer.from(`--${boundary}`);
 
       const fields = {};
-      let fileData = null;
-      let fileFilename = '';
+      const files = {};
 
       // Split by boundary
       let start = 0;
@@ -449,15 +484,19 @@ function parseMultipart(req) {
         const nameMatch = headerStr.match(/name="([^"]+)"/);
         const filenameMatch = headerStr.match(/filename="([^"]+)"/);
 
-        if (filenameMatch) {
-          fileData = body;
-          fileFilename = filenameMatch[1];
+        if (filenameMatch && nameMatch) {
+          files[nameMatch[1]] = { data: body, filename: filenameMatch[1] };
         } else if (nameMatch) {
           fields[nameMatch[1]] = body.toString('utf-8');
         }
       }
 
-      resolve({ fields, fileData, fileFilename });
+      // Backward-compatible: expose main video file as fileData/fileFilename
+      const videoFile = files.video || Object.values(files)[0];
+      const fileData = videoFile?.data || null;
+      const fileFilename = videoFile?.filename || '';
+
+      resolve({ fields, files, fileData, fileFilename });
     });
 
     req.on('error', reject);
@@ -546,7 +585,7 @@ export const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const { fields, fileData, fileFilename } = parsed;
+      const { fields, files, fileData, fileFilename } = parsed;
 
       if (!fileData || fileData.length === 0) {
         sendJSON(res, 400, { error: 'No se recibió ningún archivo.' });
@@ -566,11 +605,22 @@ export const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // Save file
+      // Save video file
       const sanitized = sanitizeFilename(fileFilename);
       const jobId = uuidv4();
       const inputPath = path.join(UPLOADS_DIR, `${jobId}_${sanitized}`);
       await fs.writeFile(inputPath, fileData);
+
+      // Save watermark file if present
+      let watermarkPath = null;
+      if (files.watermark && files.watermark.data.length > 0) {
+        const wmExt = path.extname(files.watermark.filename).toLowerCase() || '.png';
+        const allowedWmExts = ['.png', '.jpg', '.jpeg', '.webp', '.svg'];
+        if (allowedWmExts.includes(wmExt)) {
+          watermarkPath = path.join(UPLOADS_DIR, `${jobId}_watermark${wmExt}`);
+          await fs.writeFile(watermarkPath, files.watermark.data);
+        }
+      }
 
       // Create job
       const job = createJob(
@@ -583,6 +633,9 @@ export const server = http.createServer(async (req, res) => {
         fields.platform || 'custom',
         fields.igFormat || 'reels',
         fields.mirror || '0',
+        watermarkPath,
+        fields.watermarkPosition || 'bottom-right',
+        fields.watermarkSize || '20',
       );
       // Override the job id to match the one used for the file
       jobs.delete(job.id);

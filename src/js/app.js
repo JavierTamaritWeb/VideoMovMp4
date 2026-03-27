@@ -57,6 +57,17 @@ const platformHint = $('#platformHint');
 const instagramFormat = $('#instagramFormat');
 const settingsGrid = $('#settingsGrid');
 const mirrorCheckbox = $('#mirrorCheckbox');
+const watermarkCheckbox = $('#watermarkCheckbox');
+const watermarkOptions = $('#watermarkOptions');
+const watermarkInput = $('#watermarkInput');
+const watermarkBtn = $('#watermarkBtn');
+const watermarkPreview = $('#watermarkPreview');
+const watermarkPreviewWrap = $('#watermarkPreviewWrap');
+const watermarkRemove = $('#watermarkRemove');
+const watermarkPosition = $('#watermarkPosition');
+const watermarkSize = $('#watermarkSize');
+const watermarkSizeValue = $('#watermarkSizeValue');
+let watermarkFile = null;
 
 // ─── Notyf ───────────────────────────────────────────────────────────────────
 const notyf = new Notyf({
@@ -86,6 +97,41 @@ platformGrid.addEventListener('change', (e) => {
 
   const preset = PLATFORM_PRESETS[selectedPlatform];
   platformHint.textContent = isCustom ? '' : preset.description;
+});
+
+// ─── Watermark ───────────────────────────────────────────────────────────────
+watermarkCheckbox.addEventListener('change', () => {
+  watermarkOptions.hidden = !watermarkCheckbox.checked;
+  if (!watermarkCheckbox.checked) {
+    watermarkFile = null;
+    watermarkPreview.src = '';
+    watermarkPreviewWrap.hidden = true;
+    watermarkInput.value = '';
+  }
+});
+
+watermarkInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    notyf.error('Selecciona un archivo de imagen (PNG, JPG, WebP, SVG)');
+    watermarkInput.value = '';
+    return;
+  }
+  watermarkFile = file;
+  watermarkPreview.src = URL.createObjectURL(file);
+  watermarkPreviewWrap.hidden = false;
+});
+
+watermarkRemove.addEventListener('click', () => {
+  watermarkFile = null;
+  watermarkPreview.src = '';
+  watermarkPreviewWrap.hidden = true;
+  watermarkInput.value = '';
+});
+
+watermarkSize.addEventListener('input', () => {
+  watermarkSizeValue.textContent = watermarkSize.value;
 });
 
 // ─── UI State Machine ────────────────────────────────────────────────────────
@@ -231,6 +277,11 @@ async function startConversion() {
   formData.append('preset', presetSelect.value);
   formData.append('platform', selectedPlatform);
   formData.append('mirror', mirrorCheckbox.checked ? '1' : '0');
+  if (watermarkCheckbox.checked && watermarkFile) {
+    formData.append('watermark', watermarkFile);
+    formData.append('watermarkPosition', watermarkPosition.value);
+    formData.append('watermarkSize', watermarkSize.value);
+  }
   if (selectedPlatform === 'instagram') {
     const igFormat = document.querySelector('input[name="igFormat"]:checked')?.value || 'reels';
     formData.append('igFormat', igFormat);
@@ -443,6 +494,17 @@ function resetAll() {
   resInfo.textContent = '';
 
   mirrorCheckbox.checked = false;
+
+  // Reset watermark
+  watermarkCheckbox.checked = false;
+  watermarkOptions.hidden = true;
+  watermarkFile = null;
+  watermarkPreview.src = '';
+  watermarkPreviewWrap.hidden = true;
+  watermarkInput.value = '';
+  watermarkPosition.value = 'bottom-right';
+  watermarkSize.value = 20;
+  watermarkSizeValue.textContent = '20';
 
   // Reset platform selection
   selectedPlatform = 'custom';

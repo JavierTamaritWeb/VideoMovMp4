@@ -305,3 +305,34 @@ export function buildPlatformArgs(platformId, quality, inputWidth, inputHeight, 
 
   return args;
 }
+
+// ─── Watermark ──────────────────────────────────────────────────────────────
+
+export const WATERMARK_POSITIONS = {
+  'top-left':     { label: 'Arriba izquierda', x: '10', y: '10' },
+  'top-right':    { label: 'Arriba derecha',   x: 'W-w-10', y: '10' },
+  'bottom-left':  { label: 'Abajo izquierda',  x: '10', y: 'H-h-10' },
+  'bottom-right': { label: 'Abajo derecha',    x: 'W-w-10', y: 'H-h-10' },
+  'center':       { label: 'Centro',           x: '(W-w)/2', y: '(H-h)/2' },
+};
+
+export const WATERMARK_SIZES = {
+  10:  { label: '10%' },
+  15:  { label: '15%' },
+  20:  { label: '20%' },
+  25:  { label: '25%' },
+  30:  { label: '30%' },
+};
+
+export function buildWatermarkFilter(position, sizePct) {
+  const pos = WATERMARK_POSITIONS[position] || WATERMARK_POSITIONS['bottom-right'];
+  const parsed = parseInt(sizePct);
+  const pct = Math.max(5, Math.min(50, Number.isFinite(parsed) ? parsed : 20));
+
+  // [1:v] is the watermark input; scale it relative to main video width
+  // iw = main video width (from [0:v])
+  const scaleFilter = `[1:v]scale=iw*${pct}/100:-1[wm]`;
+  const overlayFilter = `[0:v][wm]overlay=${pos.x}:${pos.y}`;
+
+  return { scaleFilter, overlayFilter };
+}

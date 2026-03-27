@@ -153,6 +153,46 @@
           </label>
         </fieldset>
 
+        <!-- Watermark -->
+        <fieldset class="settings__group settings__group--watermark">
+          <legend class="settings__label">Marca de agua</legend>
+          <label class="settings__toggle-wrap">
+            <input type="checkbox" id="watermarkCheckbox" class="settings__toggle-input">
+            <span class="settings__toggle-track"></span>
+            <span class="settings__toggle-text">Añadir marca de agua</span>
+          </label>
+          <div class="settings__watermark-options" id="watermarkOptions" hidden>
+            <div class="settings__watermark-upload">
+              <label class="settings__watermark-btn" id="watermarkBtn">
+                <input type="file" id="watermarkInput" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+                <i class="fa-solid fa-image"></i> Seleccionar imagen
+              </label>
+              <div class="settings__watermark-preview-wrap" id="watermarkPreviewWrap" hidden>
+                <img id="watermarkPreview" class="settings__watermark-preview" alt="Vista previa marca de agua">
+                <button type="button" class="settings__watermark-remove" id="watermarkRemove" title="Eliminar imagen">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            </div>
+            <div class="settings__watermark-controls">
+              <div class="settings__watermark-field">
+                <label class="settings__watermark-label" for="watermarkPosition">Posición</label>
+                <select id="watermarkPosition" class="settings__select">
+                  <option value="top-left">Arriba izquierda</option>
+                  <option value="top-right">Arriba derecha</option>
+                  <option value="bottom-left">Abajo izquierda</option>
+                  <option value="bottom-right" selected>Abajo derecha</option>
+                  <option value="center">Centro</option>
+                </select>
+              </div>
+              <div class="settings__watermark-field">
+                <label class="settings__watermark-label" for="watermarkSize">Tamaño: <span id="watermarkSizeValue">20</span>%</label>
+                <input type="range" id="watermarkSize" min="5" max="50" value="20" class="settings__slider">
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
         <!-- Preset -->
         <fieldset class="settings__group settings__group--manual">
           <legend class="settings__label">Velocidad de codificación</legend>

@@ -14,6 +14,9 @@ import {
   getPlatformPreset,
   buildVideoFilterChain,
   buildPlatformArgs,
+  WATERMARK_POSITIONS,
+  WATERMARK_SIZES,
+  buildWatermarkFilter,
 } from '../../src/js/converterCore.js';
 
 // Helper: build fake magic bytes
@@ -399,5 +402,260 @@ describe('buildPlatformArgs', () => {
       expect(args).toContain('-c:v');
       expect(args).toContain('-c:a');
     }
+  });
+});
+
+// ─── Watermark ──────────────────────────────────────────────────────────────
+
+describe('WATERMARK_POSITIONS', () => {
+  it('contiene exactamente las 5 posiciones', () => {
+    const keys = Object.keys(WATERMARK_POSITIONS);
+    expect(keys).toHaveLength(5);
+    expect(keys).toEqual(
+      expect.arrayContaining(['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'])
+    );
+  });
+  it('cada posición tiene label, x e y como strings no vacíos', () => {
+    for (const [key, pos] of Object.entries(WATERMARK_POSITIONS)) {
+      expect(typeof pos.label).toBe('string');
+      expect(pos.label.length).toBeGreaterThan(0);
+      expect(typeof pos.x).toBe('string');
+      expect(pos.x.length).toBeGreaterThan(0);
+      expect(typeof pos.y).toBe('string');
+      expect(pos.y.length).toBeGreaterThan(0);
+    }
+  });
+  it('top-left usa coordenadas fijas 10:10', () => {
+    expect(WATERMARK_POSITIONS['top-left'].x).toBe('10');
+    expect(WATERMARK_POSITIONS['top-left'].y).toBe('10');
+  });
+  it('top-right usa W-w-10 para x', () => {
+    expect(WATERMARK_POSITIONS['top-right'].x).toBe('W-w-10');
+    expect(WATERMARK_POSITIONS['top-right'].y).toBe('10');
+  });
+  it('bottom-left usa H-h-10 para y', () => {
+    expect(WATERMARK_POSITIONS['bottom-left'].x).toBe('10');
+    expect(WATERMARK_POSITIONS['bottom-left'].y).toBe('H-h-10');
+  });
+  it('bottom-right usa W-w-10 y H-h-10', () => {
+    expect(WATERMARK_POSITIONS['bottom-right'].x).toBe('W-w-10');
+    expect(WATERMARK_POSITIONS['bottom-right'].y).toBe('H-h-10');
+  });
+  it('center usa (W-w)/2 y (H-h)/2', () => {
+    expect(WATERMARK_POSITIONS['center'].x).toBe('(W-w)/2');
+    expect(WATERMARK_POSITIONS['center'].y).toBe('(H-h)/2');
+  });
+});
+
+describe('WATERMARK_SIZES', () => {
+  it('contiene los 5 tamaños de 10 a 30 en incrementos de 5', () => {
+    const keys = Object.keys(WATERMARK_SIZES).map(Number);
+    expect(keys).toEqual([10, 15, 20, 25, 30]);
+  });
+  it('cada tamaño tiene un label con %', () => {
+    for (const size of Object.values(WATERMARK_SIZES)) {
+      expect(size.label).toMatch(/^\d+%$/);
+    }
+  });
+});
+
+describe('buildWatermarkFilter', () => {
+  // ── Estructura de retorno ──────────────────────────────────────────────
+  it('retorna un objeto con scaleFilter y overlayFilter', () => {
+    const result = buildWatermarkFilter('center', 20);
+    expect(result).toHaveProperty('scaleFilter');
+    expect(result).toHaveProperty('overlayFilter');
+    expect(typeof result.scaleFilter).toBe('string');
+    expect(typeof result.overlayFilter).toBe('string');
+  });
+
+  // ── scaleFilter ────────────────────────────────────────────────────────
+  it('scaleFilter empieza con [1:v] y termina con [wm]', () => {
+    const { scaleFilter } = buildWatermarkFilter('center', 20);
+    expect(scaleFilter).toMatch(/^\[1:v\].*\[wm\]$/);
+  });
+  it('scaleFilter contiene scale= con el porcentaje correcto', () => {
+    expect(buildWatermarkFilter('center', 10).scaleFilter).toBe('[1:v]scale=iw*10/100:-1[wm]');
+    expect(buildWatermarkFilter('center', 25).scaleFilter).toBe('[1:v]scale=iw*25/100:-1[wm]');
+    expect(buildWatermarkFilter('center', 50).scaleFilter).toBe('[1:v]scale=iw*50/100:-1[wm]');
+  });
+  it('scaleFilter usa -1 para mantener aspect ratio de la imagen', () => {
+    const { scaleFilter } = buildWatermarkFilter('top-left', 20);
+    expect(scaleFilter).toContain(':-1[wm]');
+  });
+
+  // ── overlayFilter ─────────────────────────────────────────────────────
+  it('overlayFilter empieza con [0:v][wm]overlay=', () => {
+    const { overlayFilter } = buildWatermarkFilter('top-left', 20);
+    expect(overlayFilter).toMatch(/^\[0:v\]\[wm\]overlay=/);
+  });
+
+  // ── Cada posición produce las coordenadas correctas ────────────────────
+  it('top-left → overlay=10:10', () => {
+    const { overlayFilter } = buildWatermarkFilter('top-left', 20);
+    expect(overlayFilter).toBe('[0:v][wm]overlay=10:10');
+  });
+  it('top-right → overlay=W-w-10:10', () => {
+    const { overlayFilter } = buildWatermarkFilter('top-right', 20);
+    expect(overlayFilter).toBe('[0:v][wm]overlay=W-w-10:10');
+  });
+  it('bottom-left → overlay=10:H-h-10', () => {
+    const { overlayFilter } = buildWatermarkFilter('bottom-left', 20);
+    expect(overlayFilter).toBe('[0:v][wm]overlay=10:H-h-10');
+  });
+  it('bottom-right → overlay=W-w-10:H-h-10', () => {
+    const { overlayFilter } = buildWatermarkFilter('bottom-right', 20);
+    expect(overlayFilter).toBe('[0:v][wm]overlay=W-w-10:H-h-10');
+  });
+  it('center → overlay=(W-w)/2:(H-h)/2', () => {
+    const { overlayFilter } = buildWatermarkFilter('center', 20);
+    expect(overlayFilter).toBe('[0:v][wm]overlay=(W-w)/2:(H-h)/2');
+  });
+
+  // ── Tamaños válidos ───────────────────────────────────────────────────
+  it('cada tamaño predefinido (10,15,20,25,30) genera el valor correcto', () => {
+    for (const pct of [10, 15, 20, 25, 30]) {
+      const { scaleFilter } = buildWatermarkFilter('center', pct);
+      expect(scaleFilter).toBe(`[1:v]scale=iw*${pct}/100:-1[wm]`);
+    }
+  });
+  it('tamaños intermedios (7, 33, 45) se pasan correctamente', () => {
+    expect(buildWatermarkFilter('center', 7).scaleFilter).toContain('iw*7/100');
+    expect(buildWatermarkFilter('center', 33).scaleFilter).toContain('iw*33/100');
+    expect(buildWatermarkFilter('center', 45).scaleFilter).toContain('iw*45/100');
+  });
+
+  // ── Clamping de tamaño ────────────────────────────────────────────────
+  it('tamaño < 5 se clampea a 5', () => {
+    expect(buildWatermarkFilter('center', 1).scaleFilter).toContain('iw*5/100');
+    expect(buildWatermarkFilter('center', 0).scaleFilter).toContain('iw*5/100');
+    expect(buildWatermarkFilter('center', -10).scaleFilter).toContain('iw*5/100');
+  });
+  it('tamaño > 50 se clampea a 50', () => {
+    expect(buildWatermarkFilter('center', 51).scaleFilter).toContain('iw*50/100');
+    expect(buildWatermarkFilter('center', 100).scaleFilter).toContain('iw*50/100');
+    expect(buildWatermarkFilter('center', 999).scaleFilter).toContain('iw*50/100');
+  });
+  it('tamaño = 5 (límite inferior) se acepta', () => {
+    expect(buildWatermarkFilter('center', 5).scaleFilter).toContain('iw*5/100');
+  });
+  it('tamaño = 50 (límite superior) se acepta', () => {
+    expect(buildWatermarkFilter('center', 50).scaleFilter).toContain('iw*50/100');
+  });
+
+  // ── Entradas inválidas para tamaño ────────────────────────────────────
+  it('tamaño no numérico (string) → default 20', () => {
+    expect(buildWatermarkFilter('center', 'abc').scaleFilter).toContain('iw*20/100');
+  });
+  it('tamaño undefined → default 20', () => {
+    expect(buildWatermarkFilter('center', undefined).scaleFilter).toContain('iw*20/100');
+  });
+  it('tamaño null → default 20', () => {
+    expect(buildWatermarkFilter('center', null).scaleFilter).toContain('iw*20/100');
+  });
+  it('tamaño NaN → default 20', () => {
+    expect(buildWatermarkFilter('center', NaN).scaleFilter).toContain('iw*20/100');
+  });
+  it('tamaño string numérico "25" → se parsea como 25', () => {
+    expect(buildWatermarkFilter('center', '25').scaleFilter).toContain('iw*25/100');
+  });
+  it('tamaño float 20.7 → se trunca a 20 (parseInt)', () => {
+    expect(buildWatermarkFilter('center', 20.7).scaleFilter).toContain('iw*20/100');
+  });
+
+  // ── Posición inválida ─────────────────────────────────────────────────
+  it('posición desconocida → fallback a bottom-right', () => {
+    const { overlayFilter } = buildWatermarkFilter('unknown', 20);
+    expect(overlayFilter).toBe('[0:v][wm]overlay=W-w-10:H-h-10');
+  });
+  it('posición vacía → fallback a bottom-right', () => {
+    const { overlayFilter } = buildWatermarkFilter('', 20);
+    expect(overlayFilter).toBe('[0:v][wm]overlay=W-w-10:H-h-10');
+  });
+  it('posición null → fallback a bottom-right', () => {
+    const { overlayFilter } = buildWatermarkFilter(null, 20);
+    expect(overlayFilter).toBe('[0:v][wm]overlay=W-w-10:H-h-10');
+  });
+  it('posición undefined → fallback a bottom-right', () => {
+    const { overlayFilter } = buildWatermarkFilter(undefined, 20);
+    expect(overlayFilter).toBe('[0:v][wm]overlay=W-w-10:H-h-10');
+  });
+
+  // ── Combinaciones posición + tamaño ───────────────────────────────────
+  it('todas las posiciones con tamaño mínimo (5) generan filtros válidos', () => {
+    for (const pos of Object.keys(WATERMARK_POSITIONS)) {
+      const { scaleFilter, overlayFilter } = buildWatermarkFilter(pos, 5);
+      expect(scaleFilter).toContain('iw*5/100');
+      expect(overlayFilter).toContain('overlay=');
+      expect(overlayFilter).toContain(WATERMARK_POSITIONS[pos].x);
+      expect(overlayFilter).toContain(WATERMARK_POSITIONS[pos].y);
+    }
+  });
+  it('todas las posiciones con tamaño máximo (50) generan filtros válidos', () => {
+    for (const pos of Object.keys(WATERMARK_POSITIONS)) {
+      const { scaleFilter, overlayFilter } = buildWatermarkFilter(pos, 50);
+      expect(scaleFilter).toContain('iw*50/100');
+      expect(overlayFilter).toContain('overlay=');
+    }
+  });
+
+  // ── Formato de la cadena de filtro para FFmpeg ────────────────────────
+  it('scaleFilter no contiene espacios (válido para FFmpeg)', () => {
+    for (const pos of Object.keys(WATERMARK_POSITIONS)) {
+      const { scaleFilter } = buildWatermarkFilter(pos, 20);
+      expect(scaleFilter).not.toContain(' ');
+    }
+  });
+  it('overlayFilter no contiene espacios (válido para FFmpeg)', () => {
+    for (const pos of Object.keys(WATERMARK_POSITIONS)) {
+      const { overlayFilter } = buildWatermarkFilter(pos, 20);
+      expect(overlayFilter).not.toContain(' ');
+    }
+  });
+
+  // ── Integración: filter_complex graph assembly ────────────────────────
+  it('scaleFilter + overlayFilter se pueden ensamblar en un filter_complex válido', () => {
+    const { scaleFilter, overlayFilter } = buildWatermarkFilter('bottom-right', 20);
+    // Simula lo que hace server.mjs: [0:v]{vf}[main]; {scaleFilter}; [main][wm]overlay[v]
+    const videoFilters = 'scale=1920:-2,hflip';
+    const mainChain = `[0:v]${videoFilters}[main]`;
+    const overlay = overlayFilter.replace('[0:v]', '[main]');
+    const filterComplex = `${mainChain};${scaleFilter};${overlay}[v]`;
+
+    // Verificar estructura del grafo
+    expect(filterComplex).toBe(
+      '[0:v]scale=1920:-2,hflip[main];[1:v]scale=iw*20/100:-1[wm];[main][wm]overlay=W-w-10:H-h-10[v]'
+    );
+  });
+  it('filter_complex sin filtros previos usa copy para [0:v]', () => {
+    const { scaleFilter, overlayFilter } = buildWatermarkFilter('top-left', 15);
+    const mainChain = '[0:v]copy[main]';
+    const overlay = overlayFilter.replace('[0:v]', '[main]');
+    const filterComplex = `${mainChain};${scaleFilter};${overlay}[v]`;
+
+    expect(filterComplex).toBe(
+      '[0:v]copy[main];[1:v]scale=iw*15/100:-1[wm];[main][wm]overlay=10:10[v]'
+    );
+  });
+  it('filter_complex con solo hflip se ensambla correctamente', () => {
+    const { scaleFilter, overlayFilter } = buildWatermarkFilter('center', 25);
+    const mainChain = '[0:v]hflip[main]';
+    const overlay = overlayFilter.replace('[0:v]', '[main]');
+    const filterComplex = `${mainChain};${scaleFilter};${overlay}[v]`;
+
+    expect(filterComplex).toBe(
+      '[0:v]hflip[main];[1:v]scale=iw*25/100:-1[wm];[main][wm]overlay=(W-w)/2:(H-h)/2[v]'
+    );
+  });
+  it('filter_complex con crop + scale de plataforma se ensambla correctamente', () => {
+    const { scaleFilter, overlayFilter } = buildWatermarkFilter('bottom-left', 10);
+    const videoFilters = 'crop=608:1080,scale=608:-2';
+    const mainChain = `[0:v]${videoFilters}[main]`;
+    const overlay = overlayFilter.replace('[0:v]', '[main]');
+    const filterComplex = `${mainChain};${scaleFilter};${overlay}[v]`;
+
+    expect(filterComplex).toContain('[0:v]crop=608:1080,scale=608:-2[main]');
+    expect(filterComplex).toContain('[1:v]scale=iw*10/100:-1[wm]');
+    expect(filterComplex).toContain('[main][wm]overlay=10:H-h-10[v]');
   });
 });
