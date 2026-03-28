@@ -185,14 +185,6 @@
                 <option value="custom" disabled>Personalizado</option>
               </select>
             </div>
-            <div class="settings__watermark-visual" id="watermarkVisual" hidden>
-              <label class="settings__watermark-label">Vista previa</label>
-              <div class="settings__watermark-canvas" id="watermarkCanvas">
-                <canvas id="watermarkFrameCanvas"></canvas>
-                <img id="watermarkDragImg" class="settings__watermark-drag-img" alt="" draggable="false">
-              </div>
-              <p class="settings__hint">Arrastra la marca de agua para posicionarla libremente</p>
-            </div>
             <div class="settings__watermark-field">
               <label class="settings__watermark-label">Tamaño: <span id="watermarkSizeValue">20</span>%</label>
               <div class="settings__slider-wrap">
@@ -260,16 +252,19 @@
                 <option value="custom" disabled>Personalizado</option>
               </select>
             </div>
-            <div class="settings__textwm-preview" id="textWmPreview" hidden>
-              <label class="settings__watermark-label">Vista previa</label>
-              <div class="settings__textwm-preview-box" id="textWmPreviewBox">
-                <canvas id="textWmFrameCanvas"></canvas>
-                <span id="textWmPreviewText" class="settings__textwm-overlay"></span>
-              </div>
-              <p class="settings__hint">Arrastra el texto para posicionarlo libremente</p>
-            </div>
           </div>
         </fieldset>
+
+        <!-- Unified watermark preview -->
+        <div class="settings__wm-preview" id="wmPreview" hidden>
+          <label class="settings__watermark-label">Vista previa</label>
+          <div class="settings__wm-preview-box" id="wmPreviewBox">
+            <canvas id="wmPreviewCanvas"></canvas>
+            <img id="wmPreviewImg" class="settings__wm-preview-drag" alt="" draggable="false">
+            <span id="wmPreviewText" class="settings__wm-preview-drag settings__wm-preview-text"></span>
+          </div>
+          <p class="settings__hint">Arrastra las marcas de agua para posicionarlas</p>
+        </div>
 
         <!-- Preset -->
         <fieldset class="settings__group settings__group--manual">

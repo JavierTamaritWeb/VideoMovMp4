@@ -46,9 +46,9 @@ Todo el procesamiento se realiza en tu maquina con FFmpeg — ningun archivo sal
 - **MOV a MP4** con codecs H.264 (libx264) + AAC
 - **Presets por plataforma** — Web, TikTok (9:16), Instagram (Reels 9:16 / Feed 1:1), YouTube (H.264 High). Cada preset ajusta automaticamente resolucion, aspect ratio, fps, bitrate y perfil H.264
 - **Espejo horizontal** — opcion para invertir el video horizontalmente (filtro `hflip`)
-- **Marca de agua (imagen)** — superpone una imagen (PNG, JPG, WebP, SVG) sobre el video con posicion (5 presets + arrastre libre), tamaño (5-50%) y opacidad (10-100%). Preview visual interactivo con drag
-- **Marca de agua (texto)** — superpone texto con fuente configurable (Montserrat Alternates, Arial, Courier, Times), tamaño (12-200px), color (selector hex), opacidad (10-100%) y posicion (5 presets + arrastre libre). Preview visual interactivo con drag
-- **Previsualizacion sincronizada** — los previews de marcas de agua reflejan el espejo horizontal en tiempo real
+- **Marca de agua (imagen)** — superpone una imagen (PNG, JPG, WebP, SVG) con posicion (5 presets + arrastre libre), tamaño (5-50%) y opacidad (10-100%)
+- **Marca de agua (texto)** — superpone texto con fuente configurable (Montserrat Alternates, Arial, Courier, Times), tamaño (12-200px), color (selector hex), opacidad (10-100%) y posicion (5 presets + arrastre libre)
+- **Preview unificado** — una sola previsualizacion donde imagen y texto se ven superpuestos sobre el video, cada uno arrastrable independientemente. Refleja el espejo horizontal en tiempo real
 - **`-movflags +faststart`** — el MP4 se reproduce en el navegador sin descargar completo
 - **`-pix_fmt yuv420p`** — compatibilidad maxima con reproductores y dispositivos
 - **Calidad ajustable** — slider de 1 a 100 con mapeo CRF perceptual (no lineal)
@@ -157,8 +157,9 @@ JOB_TTL_MIN=10            # Minutos que un job completado permanece disponible
   - **Personalizado** permite controlar todos los ajustes manualmente (comportamiento clasico)
 - **Calidad** — slider de 1 a 100 (default 75). Muestra el valor CRF calculado en tiempo real. Disponible en todos los modos
 - **Espejo horizontal** — toggle para invertir el video horizontalmente
-- **Marca de agua (imagen)** — toggle, selector de imagen con preview, posicion (5 presets o arrastre libre sobre preview), slider de tamaño (5-50%), slider de opacidad (10-100%)
-- **Marca de agua (texto)** — toggle, campo de texto, selector de fuente (Montserrat Alternates regular/bold, Arial, Courier, Times New Roman), color picker, slider de tamaño (12-200px), slider de opacidad (10-100%), posicion (5 presets o arrastre libre sobre preview)
+- **Marca de agua (imagen)** — toggle, selector de imagen, posicion (5 presets o arrastre libre en el preview), slider de tamaño (5-50%), slider de opacidad (10-100%)
+- **Marca de agua (texto)** — toggle, campo de texto, selector de fuente (Montserrat Alternates regular/bold, Arial, Courier, Times), color picker, slider de tamaño (12-200px), slider de opacidad (10-100%), posicion (5 presets o arrastre libre en el preview)
+- Ambas marcas se visualizan en un **preview unificado** donde se pueden arrastrar independientemente
 - **Resolucion** — dropdown (solo visible en modo Personalizado). Si seleccionas una resolucion mayor a la del video, se mantiene la original
 - **Preset de velocidad** — velocidad de codificacion (solo visible en modo Personalizado). "Equilibrado" es el default
 

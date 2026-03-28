@@ -71,15 +71,8 @@ const watermarkSizeValue = $('#watermarkSizeValue');
 const watermarkOpacity = $('#watermarkOpacity');
 const watermarkOpacityValue = $('#watermarkOpacityValue');
 let watermarkFile = null;
-const watermarkVisual = $('#watermarkVisual');
-const watermarkCanvasEl = $('#watermarkCanvas');
-const watermarkFrameCanvas = $('#watermarkFrameCanvas');
-const watermarkDragImg = $('#watermarkDragImg');
 let watermarkCustomX = null;
 let watermarkCustomY = null;
-let isDraggingWatermark = false;
-let dragOffsetX = 0;
-let dragOffsetY = 0;
 const textWmCheckbox = $('#textWmCheckbox');
 const textWmOptions = $('#textWmOptions');
 const textWmInput = $('#textWmInput');
@@ -90,15 +83,18 @@ const textWmSizeValue = $('#textWmSizeValue');
 const textWmOpacity = $('#textWmOpacity');
 const textWmOpacityValue = $('#textWmOpacityValue');
 const textWmPosition = $('#textWmPosition');
-const textWmPreview = $('#textWmPreview');
-const textWmPreviewBox = $('#textWmPreviewBox');
-const textWmFrameCanvas = $('#textWmFrameCanvas');
-const textWmPreviewText = $('#textWmPreviewText');
 let textWmCustomX = null;
 let textWmCustomY = null;
-let isDraggingTextWm = false;
-let textWmDragOffsetX = 0;
-let textWmDragOffsetY = 0;
+// Unified preview refs
+const wmPreview = $('#wmPreview');
+const wmPreviewBox = $('#wmPreviewBox');
+const wmPreviewCanvas = $('#wmPreviewCanvas');
+const wmPreviewImg = $('#wmPreviewImg');
+const wmPreviewText = $('#wmPreviewText');
+let isDraggingWm = false;
+let dragWmTarget = null;
+let dragWmOffsetX = 0;
+let dragWmOffsetY = 0;
 
 // ─── Notyf ───────────────────────────────────────────────────────────────────
 const notyf = new Notyf({
@@ -113,8 +109,7 @@ const notyf = new Notyf({
 
 // ─── Mirror → refresh previews ──────────────────────────────────────────────
 mirrorCheckbox.addEventListener('change', () => {
-  updateWatermarkPreview();
-  updateTextWmPreview();
+  updateWmPreview();
 });
 
 // ─── Platform Selection ──────────────────────────────────────────────────────
@@ -136,7 +131,7 @@ platformGrid.addEventListener('change', (e) => {
   platformHint.textContent = isCustom ? '' : preset.description;
 });
 
-// ─── Watermark ───────────────────────────────────────────────────────────────
+// ─── Watermark (image) ──────────────────────────────────────────────────────
 watermarkCheckbox.addEventListener('change', () => {
   watermarkOptions.hidden = !watermarkCheckbox.checked;
   if (!watermarkCheckbox.checked) {
@@ -144,9 +139,8 @@ watermarkCheckbox.addEventListener('change', () => {
     watermarkPreview.src = '/src/img/image.svg';
     watermarkRemove.hidden = true;
     watermarkInput.value = '';
-    watermarkVisual.hidden = true;
   }
-  updateWatermarkPreview();
+  updateWmPreview();
 });
 
 watermarkInput.addEventListener('change', (e) => {
@@ -160,7 +154,7 @@ watermarkInput.addEventListener('change', (e) => {
   watermarkFile = file;
   watermarkPreview.src = URL.createObjectURL(file);
   watermarkRemove.hidden = false;
-  updateWatermarkPreview();
+  updateWmPreview();
 });
 
 watermarkRemove.addEventListener('click', () => {
@@ -168,17 +162,17 @@ watermarkRemove.addEventListener('click', () => {
   watermarkPreview.src = '/src/img/image.svg';
   watermarkRemove.hidden = true;
   watermarkInput.value = '';
-  watermarkVisual.hidden = true;
+  updateWmPreview();
 });
 
 watermarkSize.addEventListener('input', () => {
   watermarkSizeValue.textContent = watermarkSize.value;
-  updateWatermarkPreview();
+  updateWmPreview();
 });
 
 watermarkOpacity.addEventListener('input', () => {
   watermarkOpacityValue.textContent = watermarkOpacity.value;
-  updateWatermarkPreview();
+  updateWmPreview();
 });
 
 watermarkPosition.addEventListener('change', () => {
@@ -188,197 +182,18 @@ watermarkPosition.addEventListener('change', () => {
     watermarkCustomX = null;
     watermarkCustomY = null;
   }
-  updateWatermarkPreview();
+  updateWmPreview();
 });
 
-// ─── Watermark Preview ──────────────────────────────────────────────────────
-function presetToPreviewCoords(preset, cW, cH, wmW, wmH) {
-  const margin = videoPreview.videoWidth ? (10 / videoPreview.videoWidth) * cW : 8;
-  switch (preset) {
-    case 'top-left':     return { x: margin, y: margin };
-    case 'top-right':    return { x: cW - wmW - margin, y: margin };
-    case 'bottom-left':  return { x: margin, y: cH - wmH - margin };
-    case 'bottom-right': return { x: cW - wmW - margin, y: cH - wmH - margin };
-    case 'center':       return { x: (cW - wmW) / 2, y: (cH - wmH) / 2 };
-    default:             return { x: cW - wmW - margin, y: cH - wmH - margin };
-  }
-}
-
-function updateWatermarkPreview() {
-  if (!watermarkCheckbox.checked || !watermarkFile || !videoPreview.videoWidth) {
-    watermarkVisual.hidden = true;
-    return;
-  }
-
-  watermarkVisual.hidden = false;
-  const vw = videoPreview.videoWidth;
-  const vh = videoPreview.videoHeight;
-  watermarkCanvasEl.style.aspectRatio = `${vw} / ${vh}`;
-
-  const cW = watermarkCanvasEl.clientWidth;
-  const cH = watermarkCanvasEl.clientHeight;
-
-  // Draw video frame (with mirror if active)
-  watermarkFrameCanvas.width = cW;
-  watermarkFrameCanvas.height = cH;
-  const ctx = watermarkFrameCanvas.getContext('2d');
-  if (mirrorCheckbox.checked) {
-    ctx.translate(cW, 0);
-    ctx.scale(-1, 1);
-  }
-  if (videoPreview.readyState >= 2) {
-    ctx.drawImage(videoPreview, 0, 0, cW, cH);
-  } else {
-    ctx.fillStyle = '#111';
-    ctx.fillRect(0, 0, cW, cH);
-  }
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-  // Set watermark image
-  watermarkDragImg.src = watermarkPreview.src;
-  const wmDisplayW = cW * (watermarkSize.value / 100);
-  watermarkDragImg.style.width = wmDisplayW + 'px';
-  watermarkDragImg.style.height = 'auto';
-  watermarkDragImg.style.opacity = watermarkOpacity.value / 100;
-
-  // Position after image loads
-  watermarkDragImg.onload = () => {
-    const wmW = watermarkDragImg.offsetWidth;
-    const wmH = watermarkDragImg.offsetHeight;
-    let coords;
-    if (watermarkPosition.value === 'custom' && watermarkCustomX !== null) {
-      coords = { x: watermarkCustomX * cW, y: watermarkCustomY * cH };
-    } else {
-      coords = presetToPreviewCoords(watermarkPosition.value, cW, cH, wmW, wmH);
-    }
-    coords.x = Math.max(0, Math.min(cW - wmW, coords.x));
-    coords.y = Math.max(0, Math.min(cH - wmH, coords.y));
-    watermarkDragImg.style.left = coords.x + 'px';
-    watermarkDragImg.style.top = coords.y + 'px';
-  };
-  // Trigger if already cached
-  if (watermarkDragImg.complete) watermarkDragImg.onload();
-}
-
-// ─── Watermark Drag ─────────────────────────────────────────────────────────
-function onWmDragStart(e) {
-  if (!watermarkFile) return;
-  e.preventDefault();
-  isDraggingWatermark = true;
-  watermarkDragImg.classList.add('settings__watermark-drag-img--dragging');
-  const rect = watermarkDragImg.getBoundingClientRect();
-  const cx = e.touches ? e.touches[0].clientX : e.clientX;
-  const cy = e.touches ? e.touches[0].clientY : e.clientY;
-  dragOffsetX = cx - rect.left;
-  dragOffsetY = cy - rect.top;
-}
-
-function onWmDragMove(e) {
-  if (!isDraggingWatermark) return;
-  e.preventDefault();
-  const cx = e.touches ? e.touches[0].clientX : e.clientX;
-  const cy = e.touches ? e.touches[0].clientY : e.clientY;
-  const canvasRect = watermarkCanvasEl.getBoundingClientRect();
-  const wmW = watermarkDragImg.offsetWidth;
-  const wmH = watermarkDragImg.offsetHeight;
-  let newLeft = Math.max(0, Math.min(canvasRect.width - wmW, cx - canvasRect.left - dragOffsetX));
-  let newTop = Math.max(0, Math.min(canvasRect.height - wmH, cy - canvasRect.top - dragOffsetY));
-  watermarkDragImg.style.left = newLeft + 'px';
-  watermarkDragImg.style.top = newTop + 'px';
-}
-
-function onWmDragEnd() {
-  if (!isDraggingWatermark) return;
-  isDraggingWatermark = false;
-  watermarkDragImg.classList.remove('settings__watermark-drag-img--dragging');
-  const cW = watermarkCanvasEl.clientWidth;
-  const cH = watermarkCanvasEl.clientHeight;
-  watermarkCustomX = parseFloat(watermarkDragImg.style.left) / cW;
-  watermarkCustomY = parseFloat(watermarkDragImg.style.top) / cH;
-  // Switch to custom
-  const customOpt = watermarkPosition.querySelector('option[value="custom"]');
-  if (customOpt) customOpt.disabled = false;
-  watermarkPosition.value = 'custom';
-}
-
-watermarkDragImg.addEventListener('mousedown', onWmDragStart);
-watermarkDragImg.addEventListener('touchstart', onWmDragStart, { passive: false });
-document.addEventListener('mousemove', onWmDragMove);
-document.addEventListener('touchmove', onWmDragMove, { passive: false });
-document.addEventListener('mouseup', onWmDragEnd);
-document.addEventListener('touchend', onWmDragEnd);
-
-// ─── Text Watermark ─────────────────────────────────────────────────────────
+// ─── Watermark (text) ───────────────────────────────────────────────────────
 textWmCheckbox.addEventListener('change', () => {
   textWmOptions.hidden = !textWmCheckbox.checked;
-  updateTextWmPreview();
+  updateWmPreview();
 });
 
-function updateTextWmPreview() {
-  const txt = textWmInput.value.trim();
-  if (!textWmCheckbox.checked || !txt || !videoPreview.videoWidth) {
-    textWmPreview.hidden = true;
-    return;
-  }
-  textWmPreview.hidden = false;
-  const vw = videoPreview.videoWidth;
-  const vh = videoPreview.videoHeight;
-  textWmPreviewBox.style.aspectRatio = `${vw} / ${vh}`;
-
-  const cW = textWmPreviewBox.clientWidth;
-  const cH = textWmPreviewBox.clientHeight;
-  textWmFrameCanvas.width = cW;
-  textWmFrameCanvas.height = cH;
-  const ctx = textWmFrameCanvas.getContext('2d');
-  if (mirrorCheckbox.checked) {
-    ctx.translate(cW, 0);
-    ctx.scale(-1, 1);
-  }
-  if (videoPreview.readyState >= 2) {
-    ctx.drawImage(videoPreview, 0, 0, cW, cH);
-  } else {
-    ctx.fillStyle = '#111';
-    ctx.fillRect(0, 0, cW, cH);
-  }
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-  // Style the text overlay
-  const font = WATERMARK_FONTS[textWmFont.value] || WATERMARK_FONTS['arial'];
-  const scaledSize = Math.max(8, Math.round((parseInt(textWmSize.value) / vw) * cW));
-  textWmPreviewText.textContent = txt;
-  textWmPreviewText.style.fontFamily = font.css;
-  textWmPreviewText.style.fontSize = scaledSize + 'px';
-  textWmPreviewText.style.fontWeight = textWmFont.value === 'montserrat-bold' ? '700' : '400';
-  textWmPreviewText.style.color = textWmColor.value;
-  textWmPreviewText.style.opacity = textWmOpacity.value / 100;
-
-  // Position
-  const elW = textWmPreviewText.offsetWidth;
-  const elH = textWmPreviewText.offsetHeight;
-  const margin = (10 / vw) * cW;
-  const pos = textWmPosition.value;
-  let x, y;
-  if (pos === 'custom' && textWmCustomX !== null) {
-    x = textWmCustomX * cW;
-    y = textWmCustomY * cH;
-  } else {
-    switch (pos) {
-      case 'top-left':     x = margin; y = margin; break;
-      case 'top-right':    x = cW - elW - margin; y = margin; break;
-      case 'bottom-left':  x = margin; y = cH - elH - margin; break;
-      case 'center':       x = (cW - elW) / 2; y = (cH - elH) / 2; break;
-      default:             x = cW - elW - margin; y = cH - elH - margin; break;
-    }
-  }
-  x = Math.max(0, Math.min(cW - elW, x));
-  y = Math.max(0, Math.min(cH - elH, y));
-  textWmPreviewText.style.left = x + 'px';
-  textWmPreviewText.style.top = y + 'px';
-}
-
 for (const el of [textWmInput, textWmFont, textWmColor]) {
-  el.addEventListener('input', updateTextWmPreview);
-  el.addEventListener('change', updateTextWmPreview);
+  el.addEventListener('input', updateWmPreview);
+  el.addEventListener('change', updateWmPreview);
 }
 textWmPosition.addEventListener('change', () => {
   if (textWmPosition.value !== 'custom') {
@@ -387,62 +202,184 @@ textWmPosition.addEventListener('change', () => {
     textWmCustomX = null;
     textWmCustomY = null;
   }
-  updateTextWmPreview();
+  updateWmPreview();
 });
 textWmSize.addEventListener('input', () => {
   textWmSizeValue.textContent = textWmSize.value;
-  updateTextWmPreview();
+  updateWmPreview();
 });
 textWmOpacity.addEventListener('input', () => {
   textWmOpacityValue.textContent = textWmOpacity.value;
-  updateTextWmPreview();
+  updateWmPreview();
 });
 
-// ─── Text Watermark Drag ────────────────────────────────────────────────────
-function onTextWmDragStart(e) {
+// ─── Unified Watermark Preview ──────────────────────────────────────────────
+function presetToPreviewCoords(preset, cW, cH, elW, elH) {
+  const margin = videoPreview.videoWidth ? (10 / videoPreview.videoWidth) * cW : 8;
+  switch (preset) {
+    case 'top-left':     return { x: margin, y: margin };
+    case 'top-right':    return { x: cW - elW - margin, y: margin };
+    case 'bottom-left':  return { x: margin, y: cH - elH - margin };
+    case 'bottom-right': return { x: cW - elW - margin, y: cH - elH - margin };
+    case 'center':       return { x: (cW - elW) / 2, y: (cH - elH) / 2 };
+    default:             return { x: cW - elW - margin, y: cH - elH - margin };
+  }
+}
+
+function updateWmPreview() {
+  const hasImg = watermarkCheckbox.checked && watermarkFile && videoPreview.videoWidth;
+  const hasTxt = textWmCheckbox.checked && textWmInput.value.trim() && videoPreview.videoWidth;
+
+  if (!hasImg && !hasTxt) {
+    wmPreview.hidden = true;
+    return;
+  }
+
+  wmPreview.hidden = false;
+  const vw = videoPreview.videoWidth;
+  const vh = videoPreview.videoHeight;
+  wmPreviewBox.style.aspectRatio = `${vw} / ${vh}`;
+
+  const cW = wmPreviewBox.clientWidth;
+  const cH = wmPreviewBox.clientHeight;
+
+  // Draw video frame (with mirror)
+  wmPreviewCanvas.width = cW;
+  wmPreviewCanvas.height = cH;
+  const ctx = wmPreviewCanvas.getContext('2d');
+  if (mirrorCheckbox.checked) {
+    ctx.translate(cW, 0);
+    ctx.scale(-1, 1);
+  }
+  if (videoPreview.readyState >= 2) {
+    ctx.drawImage(videoPreview, 0, 0, cW, cH);
+  } else {
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, cW, cH);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  // ── Image watermark layer ──
+  if (hasImg) {
+    wmPreviewImg.style.display = '';
+    wmPreviewImg.src = watermarkPreview.src;
+    const wmDisplayW = cW * (watermarkSize.value / 100);
+    wmPreviewImg.style.width = wmDisplayW + 'px';
+    wmPreviewImg.style.height = 'auto';
+    wmPreviewImg.style.opacity = watermarkOpacity.value / 100;
+
+    wmPreviewImg.onload = () => {
+      const wmW = wmPreviewImg.offsetWidth;
+      const wmH = wmPreviewImg.offsetHeight;
+      let coords;
+      if (watermarkPosition.value === 'custom' && watermarkCustomX !== null) {
+        coords = { x: watermarkCustomX * cW, y: watermarkCustomY * cH };
+      } else {
+        coords = presetToPreviewCoords(watermarkPosition.value, cW, cH, wmW, wmH);
+      }
+      coords.x = Math.max(0, Math.min(cW - wmW, coords.x));
+      coords.y = Math.max(0, Math.min(cH - wmH, coords.y));
+      wmPreviewImg.style.left = coords.x + 'px';
+      wmPreviewImg.style.top = coords.y + 'px';
+    };
+    if (wmPreviewImg.complete) wmPreviewImg.onload();
+  } else {
+    wmPreviewImg.style.display = 'none';
+  }
+
+  // ── Text watermark layer ──
+  if (hasTxt) {
+    wmPreviewText.style.display = '';
+    const font = WATERMARK_FONTS[textWmFont.value] || WATERMARK_FONTS['arial'];
+    const scaledSize = Math.max(8, Math.round((parseInt(textWmSize.value) / vw) * cW));
+    wmPreviewText.textContent = textWmInput.value.trim();
+    wmPreviewText.style.fontFamily = font.css;
+    wmPreviewText.style.fontSize = scaledSize + 'px';
+    wmPreviewText.style.fontWeight = textWmFont.value === 'montserrat-bold' ? '700' : '400';
+    wmPreviewText.style.color = textWmColor.value;
+    wmPreviewText.style.opacity = textWmOpacity.value / 100;
+
+    const elW = wmPreviewText.offsetWidth;
+    const elH = wmPreviewText.offsetHeight;
+    let x, y;
+    if (textWmPosition.value === 'custom' && textWmCustomX !== null) {
+      x = textWmCustomX * cW;
+      y = textWmCustomY * cH;
+    } else {
+      const c = presetToPreviewCoords(textWmPosition.value, cW, cH, elW, elH);
+      x = c.x; y = c.y;
+    }
+    x = Math.max(0, Math.min(cW - elW, x));
+    y = Math.max(0, Math.min(cH - elH, y));
+    wmPreviewText.style.left = x + 'px';
+    wmPreviewText.style.top = y + 'px';
+  } else {
+    wmPreviewText.style.display = 'none';
+  }
+}
+
+// ─── Unified Drag ───────────────────────────────────────────────────────────
+function onWmDragStart(e) {
+  const target = e.target;
+  if (target !== wmPreviewImg && target !== wmPreviewText) return;
   e.preventDefault();
-  isDraggingTextWm = true;
-  textWmPreviewText.classList.add('settings__textwm-overlay--dragging');
-  const rect = textWmPreviewText.getBoundingClientRect();
+  isDraggingWm = true;
+  dragWmTarget = target;
+  target.classList.add('settings__wm-preview-drag--dragging');
+  const rect = target.getBoundingClientRect();
   const cx = e.touches ? e.touches[0].clientX : e.clientX;
   const cy = e.touches ? e.touches[0].clientY : e.clientY;
-  textWmDragOffsetX = cx - rect.left;
-  textWmDragOffsetY = cy - rect.top;
+  dragWmOffsetX = cx - rect.left;
+  dragWmOffsetY = cy - rect.top;
 }
 
-function onTextWmDragMove(e) {
-  if (!isDraggingTextWm) return;
+function onWmDragMove(e) {
+  if (!isDraggingWm || !dragWmTarget) return;
   e.preventDefault();
   const cx = e.touches ? e.touches[0].clientX : e.clientX;
   const cy = e.touches ? e.touches[0].clientY : e.clientY;
-  const boxRect = textWmPreviewBox.getBoundingClientRect();
-  const elW = textWmPreviewText.offsetWidth;
-  const elH = textWmPreviewText.offsetHeight;
-  const newLeft = Math.max(0, Math.min(boxRect.width - elW, cx - boxRect.left - textWmDragOffsetX));
-  const newTop = Math.max(0, Math.min(boxRect.height - elH, cy - boxRect.top - textWmDragOffsetY));
-  textWmPreviewText.style.left = newLeft + 'px';
-  textWmPreviewText.style.top = newTop + 'px';
+  const boxRect = wmPreviewBox.getBoundingClientRect();
+  const elW = dragWmTarget.offsetWidth;
+  const elH = dragWmTarget.offsetHeight;
+  const newLeft = Math.max(0, Math.min(boxRect.width - elW, cx - boxRect.left - dragWmOffsetX));
+  const newTop = Math.max(0, Math.min(boxRect.height - elH, cy - boxRect.top - dragWmOffsetY));
+  dragWmTarget.style.left = newLeft + 'px';
+  dragWmTarget.style.top = newTop + 'px';
 }
 
-function onTextWmDragEnd() {
-  if (!isDraggingTextWm) return;
-  isDraggingTextWm = false;
-  textWmPreviewText.classList.remove('settings__textwm-overlay--dragging');
-  const cW = textWmPreviewBox.clientWidth;
-  const cH = textWmPreviewBox.clientHeight;
-  textWmCustomX = parseFloat(textWmPreviewText.style.left) / cW;
-  textWmCustomY = parseFloat(textWmPreviewText.style.top) / cH;
-  const opt = textWmPosition.querySelector('option[value="custom"]');
-  if (opt) opt.disabled = false;
-  textWmPosition.value = 'custom';
+function onWmDragEnd() {
+  if (!isDraggingWm || !dragWmTarget) return;
+  isDraggingWm = false;
+  dragWmTarget.classList.remove('settings__wm-preview-drag--dragging');
+  const cW = wmPreviewBox.clientWidth;
+  const cH = wmPreviewBox.clientHeight;
+  const relX = parseFloat(dragWmTarget.style.left) / cW;
+  const relY = parseFloat(dragWmTarget.style.top) / cH;
+
+  if (dragWmTarget === wmPreviewImg) {
+    watermarkCustomX = relX;
+    watermarkCustomY = relY;
+    const opt = watermarkPosition.querySelector('option[value="custom"]');
+    if (opt) opt.disabled = false;
+    watermarkPosition.value = 'custom';
+  } else {
+    textWmCustomX = relX;
+    textWmCustomY = relY;
+    const opt = textWmPosition.querySelector('option[value="custom"]');
+    if (opt) opt.disabled = false;
+    textWmPosition.value = 'custom';
+  }
+  dragWmTarget = null;
 }
 
-textWmPreviewText.addEventListener('mousedown', onTextWmDragStart);
-textWmPreviewText.addEventListener('touchstart', onTextWmDragStart, { passive: false });
-document.addEventListener('mousemove', onTextWmDragMove);
-document.addEventListener('touchmove', onTextWmDragMove, { passive: false });
-document.addEventListener('mouseup', onTextWmDragEnd);
-document.addEventListener('touchend', onTextWmDragEnd);
+wmPreviewImg.addEventListener('mousedown', onWmDragStart);
+wmPreviewImg.addEventListener('touchstart', onWmDragStart, { passive: false });
+wmPreviewText.addEventListener('mousedown', onWmDragStart);
+wmPreviewText.addEventListener('touchstart', onWmDragStart, { passive: false });
+document.addEventListener('mousemove', onWmDragMove);
+document.addEventListener('touchmove', onWmDragMove, { passive: false });
+document.addEventListener('mouseup', onWmDragEnd);
+document.addEventListener('touchend', onWmDragEnd);
 
 // ─── UI State Machine ────────────────────────────────────────────────────────
 function setState(state) {
@@ -546,8 +483,7 @@ async function handleFile(file) {
     if (videoPreview.videoWidth && videoPreview.videoHeight) {
       resInfo.textContent = `(actual: ${videoPreview.videoWidth}×${videoPreview.videoHeight})`;
     }
-    updateWatermarkPreview();
-    updateTextWmPreview();
+    updateWmPreview();
   }, { once: true });
 }
 
@@ -856,11 +792,6 @@ function resetAll() {
   watermarkOpacityValue.textContent = '100';
   watermarkCustomX = null;
   watermarkCustomY = null;
-  isDraggingWatermark = false;
-  watermarkVisual.hidden = true;
-  watermarkDragImg.src = '';
-  const customOpt = watermarkPosition.querySelector('option[value="custom"]');
-  if (customOpt) customOpt.disabled = true;
 
   // Reset text watermark
   textWmCheckbox.checked = false;
@@ -875,10 +806,17 @@ function resetAll() {
   textWmPosition.value = 'bottom-right';
   textWmCustomX = null;
   textWmCustomY = null;
-  isDraggingTextWm = false;
-  const textWmCustomOpt = textWmPosition.querySelector('option[value="custom"]');
-  if (textWmCustomOpt) textWmCustomOpt.disabled = true;
-  textWmPreview.hidden = true;
+
+  // Reset unified preview
+  isDraggingWm = false;
+  dragWmTarget = null;
+  wmPreview.hidden = true;
+  wmPreviewImg.src = '';
+  wmPreviewText.textContent = '';
+  const wmCustomOpt1 = watermarkPosition.querySelector('option[value="custom"]');
+  if (wmCustomOpt1) wmCustomOpt1.disabled = true;
+  const wmCustomOpt2 = textWmPosition.querySelector('option[value="custom"]');
+  if (wmCustomOpt2) wmCustomOpt2.disabled = true;
 
   // Reset slider fills
   for (const s of document.querySelectorAll('.settings__slider')) updateSliderFill(s);

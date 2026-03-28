@@ -62,9 +62,9 @@ VideoMovMp4 es una aplicacion web de una sola pagina (SPA) que convierte archivo
 - Seleccion de preset de velocidad (ultrafast, fast, medium, slow)
 - Presets por plataforma: Web, TikTok (9:16), Instagram (Reels 9:16 / Feed 1:1), YouTube (H.264 High) con ajustes automaticos de resolucion, aspect ratio, fps, bitrate y perfil H.264
 - Espejo horizontal (filtro `hflip` de FFmpeg)
-- Marca de agua de imagen: superpuesta con posicion (5 presets + arrastre libre), tamaño (5-50%), opacidad (10-100%), preview visual interactivo con drag. Usa `-filter_complex` con `overlay`
-- Marca de agua de texto: texto con fuente configurable (Montserrat Alternates regular/bold, Arial, Courier, Times), tamaño (12-200px), color (hex), opacidad, posicion (5 presets + arrastre libre), preview visual con drag. Usa FFmpeg `drawtext`
-- Previsualizaciones sincronizadas con espejo horizontal (hflip) en tiempo real
+- Marca de agua de imagen: superpuesta con posicion (5 presets + arrastre libre), tamaño (5-50%), opacidad (10-100%). Usa `-filter_complex` con `overlay`
+- Marca de agua de texto: texto con fuente configurable (Montserrat Alternates regular/bold, Arial, Courier, Times), tamaño (12-200px), color (hex), opacidad, posicion (5 presets + arrastre libre). Usa FFmpeg `drawtext`
+- Preview unificado: una sola previsualizacion donde imagen y texto se ven superpuestos sobre el video, cada uno arrastrable independientemente. Refleja espejo horizontal (hflip) en tiempo real
 - Cancelacion de conversiones en curso
 - Recuperacion automatica de sesion tras refresh del navegador
 - Reconexion SSE automatica con backoff exponencial
@@ -1274,7 +1274,7 @@ Archivo de 237 lineas. SPA (Single Page Application) con estructura semantica HT
 | ID | Seccion | Visible cuando |
 |----|---------|---------------|
 | `panelUpload` | Zona de subida (drag & drop + file info) | `idle`, `configuring` |
-| `panelSettings` | Opciones de conversion (plataforma, calidad, espejo, marca de agua imagen, marca de agua texto, resolucion, preset) | `configuring` |
+| `panelSettings` | Opciones de conversion (plataforma, calidad, espejo, marca de agua imagen, marca de agua texto, preview unificado, resolucion, preset) | `configuring` |
 | `panelProgress` | Barra de progreso + stats en tiempo real | `converting` |
 | `panelResult` | Preview + comparativa + descarga | `done` |
 | `panelError` | Mensaje de error + boton reintentar | `error` |
@@ -1364,10 +1364,10 @@ import {
 | `uiState` | string | Estado actual de la UI |
 | `selectedPlatform` | string | Plataforma seleccionada (`"custom"`, `"web"`, `"tiktok"`, `"instagram"`, `"youtube"`) |
 | `watermarkFile` | File\|null | Archivo de imagen para marca de agua |
-| `watermarkCustomX` | number\|null | Posicion X relativa (0-1) de la marca de agua imagen (drag) |
-| `watermarkCustomY` | number\|null | Posicion Y relativa (0-1) de la marca de agua imagen (drag) |
-| `textWmCustomX` | number\|null | Posicion X relativa (0-1) de la marca de agua texto (drag) |
-| `textWmCustomY` | number\|null | Posicion Y relativa (0-1) de la marca de agua texto (drag) |
+| `watermarkCustomX/Y` | number\|null | Posicion relativa (0-1) de la marca de agua imagen (drag) |
+| `textWmCustomX/Y` | number\|null | Posicion relativa (0-1) de la marca de agua texto (drag) |
+| `isDraggingWm` | boolean | Flag de arrastre activo (imagen o texto) |
+| `dragWmTarget` | Element\|null | Elemento que se esta arrastrando (`wmPreviewImg` o `wmPreviewText`) |
 
 ### 8.4 Maquina de estados de la UI
 
@@ -1711,9 +1711,9 @@ Descripcion paso a paso de una conversion exitosa:
 4. USUARIO selecciona plataforma (ej. TikTok) o "Personalizado"
    - Si plataforma seleccionada: controles de resolucion/preset se ocultan
    - Ajusta calidad (75), opcionalmente activa espejo horizontal
-   - Opcionalmente activa marca de agua imagen: selecciona imagen, arrastra sobre preview o elige posicion, tamaño y opacidad
-   - Opcionalmente activa marca de agua texto: escribe texto, elige fuente/tamaño/color, arrastra sobre preview o elige posicion
-   - Los previews de marcas de agua reflejan el espejo en tiempo real
+   - Opcionalmente activa marca de agua imagen y/o texto
+   - Ambas se muestran en un preview unificado donde se pueden arrastrar independientemente
+   - El preview refleja el espejo horizontal en tiempo real
      ↓
 5. USUARIO pulsa "Convertir a MP4" (o Ctrl+Enter)
      ↓
