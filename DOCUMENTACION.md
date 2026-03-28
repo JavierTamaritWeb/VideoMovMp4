@@ -60,7 +60,7 @@ VideoMovMp4 es una aplicacion web de una sola pagina (SPA) que convierte archivo
 - Ajuste de calidad con mapeo CRF perceptual (no lineal)
 - Seleccion de resolucion (Original, 1080p, 720p, 480p) con proteccion contra ampliacion
 - Seleccion de preset de velocidad (ultrafast, fast, medium, slow)
-- Presets por plataforma: Web, TikTok (9:16), Instagram (Reels 9:16 / Feed 1:1), YouTube (H.264 High) con ajustes automaticos de resolucion, aspect ratio, fps, bitrate y perfil H.264
+- Presets por plataforma: Web, TikTok (9:16), Instagram (Reels, Story, Feed 1:1/4:5/16:9), WhatsApp (960×540, baseline), YouTube (H.264 High) con ajustes automaticos de resolucion, aspect ratio, fps, bitrate y perfil H.264
 - Espejo horizontal (filtro `hflip` de FFmpeg)
 - Marca de agua de imagen: superpuesta con posicion (5 presets + arrastre libre), tamaño (5-50%), opacidad (10-100%). Usa `-filter_complex` con `overlay`
 - Marca de agua de texto: texto con fuente configurable (Montserrat Alternates regular/bold, Arial, Courier, Times), tamaño (12-200px), color (hex), opacidad, posicion (5 presets + arrastre libre). Usa FFmpeg `drawtext`
@@ -200,7 +200,7 @@ VideoMobMp4/
 │
 ├── tests/
 │   └── unit/
-│       ├── converterCore.test.js  # 186 tests (funciones puras, presets, watermark, drawtext)
+│       ├── converterCore.test.js  # 195 tests (funciones puras, presets, watermark, drawtext)
 │       └── server.test.js         # 7 tests de integracion de la API
 │
 ├── e2e/
@@ -407,7 +407,7 @@ Esto previene ataques como `/../../../etc/passwd` o `/%2e%2e%2f%2e%2e%2fetc%2fpa
   - `resolution` (string, opcional): "original"|"1080p"|"720p"|"480p", default "original"
   - `preset` (string, opcional): "ultrafast"|"fast"|"medium"|"slow", default "medium"
   - `platform` (string, opcional): "custom"|"web"|"tiktok"|"instagram"|"youtube", default "custom"
-  - `igFormat` (string, opcional): "reels"|"feed", default "reels" (solo aplica si platform="instagram")
+  - `igFormat` (string, opcional): "reels"|"story"|"feed"|"feed-vertical"|"feed-horizontal", default "reels" (solo aplica si platform="instagram")
   - `mirror` (string, opcional): "0"|"1", default "0" (espejo horizontal)
   - `watermark` (file, opcional): imagen para marca de agua (PNG, JPG, WebP, SVG)
   - `watermarkPosition` (string, opcional): "top-left"|"top-right"|"bottom-left"|"bottom-right"|"center", default "bottom-right"
@@ -618,7 +618,7 @@ Cada conversion se gestiona como un "job" almacenado en un `Map` en memoria.
   resolution: "1080p",         // "original"|"1080p"|"720p"|"480p"
   preset: "medium",            // "ultrafast"|"fast"|"medium"|"slow"
   platform: "custom",          // "custom"|"web"|"tiktok"|"instagram"|"youtube"
-  igFormat: "reels",           // "reels"|"feed" (solo para Instagram)
+  igFormat: "reels",           // "reels"|"story"|"feed"|"feed-vertical"|"feed-horizontal" (solo para Instagram)
   mirror: false,               // true = aplicar espejo horizontal (hflip)
   watermarkPath: null,         // Ruta al archivo de imagen (null si no hay)
   watermarkPosition: "bottom-right",  // Posición de la marca de agua
@@ -1116,7 +1116,7 @@ El preset `custom` tiene todos los overrides a `null` (modo manual).
 | `preset` | object | Objeto de `PLATFORM_PRESETS` |
 | `inputWidth` | number | Ancho del video original |
 | `inputHeight` | number | Alto del video original |
-| `igFormat` | string | `"reels"` o `"feed"` (solo para Instagram) |
+| `igFormat` | string | `"reels"`, `"story"`, `"feed"`, `"feed-vertical"` o `"feed-horizontal"` (solo para Instagram) |
 | **Retorno** | string | Cadena de filtros (ej: `"crop=608:1080,scale=1080:-2"`) o `""` |
 
 **Logica:**
@@ -1557,7 +1557,7 @@ npm run test:watch    # Modo watch (vitest)
 
 ### 10.2 Tests de funciones puras (converterCore.test.js)
 
-Archivo: `tests/unit/converterCore.test.js` — 186 tests.
+Archivo: `tests/unit/converterCore.test.js` — 195 tests.
 
 | Grupo `describe` | Tests | Que verifica |
 |-------------------|-------|-------------|

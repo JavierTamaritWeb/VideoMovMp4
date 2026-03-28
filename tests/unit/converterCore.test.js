@@ -273,7 +273,7 @@ describe('parseFFprobeOutput', () => {
 describe('PLATFORM_PRESETS', () => {
   it('contiene todas las plataformas esperadas', () => {
     expect(Object.keys(PLATFORM_PRESETS)).toEqual(
-      expect.arrayContaining(['custom', 'web', 'tiktok', 'instagram', 'youtube'])
+      expect.arrayContaining(['custom', 'web', 'tiktok', 'instagram', 'whatsapp', 'youtube'])
     );
   });
   it('cada preset tiene las propiedades requeridas', () => {
@@ -330,6 +330,38 @@ describe('buildVideoFilterChain', () => {
 
   it('cuadrado 1080×1080 con Instagram Feed → sin filtro', () => {
     const vf = buildVideoFilterChain(igPreset, 1080, 1080, 'feed');
+    expect(vf).toBe('');
+  });
+
+  it('landscape 1920×1080 con Instagram Feed vertical (4:5) → crop', () => {
+    const vf = buildVideoFilterChain(igPreset, 1920, 1080, 'feed-vertical');
+    expect(vf).toContain('crop=');
+    // 4/5 * 1080 = 864
+    expect(vf).toMatch(/crop=86[24]:1080/);
+  });
+
+  it('portrait 1080×1350 con Instagram Feed vertical → sin filtro (ya encaja)', () => {
+    const vf = buildVideoFilterChain(igPreset, 1080, 1350, 'feed-vertical');
+    expect(vf).toBe('');
+  });
+
+  it('landscape 1920×1080 con Instagram Feed horizontal (16:9) → scale a 1080', () => {
+    const vf = buildVideoFilterChain(igPreset, 1920, 1080, 'feed-horizontal');
+    expect(vf).toContain('scale=1080:-2');
+  });
+
+  it('pequeño 640×360 con Instagram Feed horizontal → sin filtro (no ampliar)', () => {
+    const vf = buildVideoFilterChain(igPreset, 640, 360, 'feed-horizontal');
+    expect(vf).toBe('');
+  });
+
+  it('landscape 1920×1080 con Instagram Story (9:16) → crop vertical', () => {
+    const vf = buildVideoFilterChain(igPreset, 1920, 1080, 'story');
+    expect(vf).toContain('crop=');
+  });
+
+  it('portrait 1080×1920 con Instagram Story → sin filtro (ya encaja)', () => {
+    const vf = buildVideoFilterChain(igPreset, 1080, 1920, 'story');
     expect(vf).toBe('');
   });
 
@@ -400,8 +432,28 @@ describe('buildPlatformArgs', () => {
     expect(Number(crfLow)).toBeGreaterThan(Number(crfHigh));
   });
 
+  it('whatsapp → incluye -profile:v baseline, -level 3.1, -maxrate 1500k, -b:a 96k', () => {
+    const args = buildPlatformArgs('whatsapp', 75, 1920, 1080, 30);
+    expect(args[args.indexOf('-profile:v') + 1]).toBe('baseline');
+    expect(args[args.indexOf('-level') + 1]).toBe('3.1');
+    expect(args).toContain('-maxrate');
+    expect(args[args.indexOf('-maxrate') + 1]).toBe('1500k');
+    expect(args[args.indexOf('-b:a') + 1]).toBe('96k');
+  });
+
+  it('whatsapp con 1920×1080 → scale a 960', () => {
+    const args = buildPlatformArgs('whatsapp', 75, 1920, 1080, 30);
+    expect(args).toContain('-vf');
+    expect(args[args.indexOf('-vf') + 1]).toContain('scale=960:-2');
+  });
+
+  it('whatsapp con 640×480 → sin scale (no ampliar)', () => {
+    const args = buildPlatformArgs('whatsapp', 75, 640, 480, 30);
+    expect(args).not.toContain('-vf');
+  });
+
   it('siempre incluye -c:v libx264 y -c:a aac', () => {
-    for (const platform of ['web', 'tiktok', 'instagram', 'youtube']) {
+    for (const platform of ['web', 'tiktok', 'instagram', 'whatsapp', 'youtube']) {
       const args = buildPlatformArgs(platform, 75, 1920, 1080, 30);
       expect(args).toContain('-c:v');
       expect(args).toContain('-c:a');

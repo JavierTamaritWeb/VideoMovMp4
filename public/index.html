@@ -93,6 +93,12 @@
               <span class="settings__platform-name">Instagram</span>
               <span class="settings__platform-desc">Reels 9:16, 30 fps</span>
             </label>
+            <label class="settings__platform-card" data-platform="whatsapp">
+              <input type="radio" name="platform" value="whatsapp" hidden>
+              <i class="fa-brands fa-whatsapp"></i>
+              <span class="settings__platform-name">WhatsApp</span>
+              <span class="settings__platform-desc">Envío rápido, 960×540</span>
+            </label>
             <label class="settings__platform-card" data-platform="youtube">
               <input type="radio" name="platform" value="youtube" hidden>
               <i class="fa-brands fa-youtube"></i>
@@ -106,7 +112,16 @@
               <input type="radio" name="igFormat" value="reels" checked> Reels (9:16)
             </label>
             <label class="settings__sub-option">
-              <input type="radio" name="igFormat" value="feed"> Feed (1:1)
+              <input type="radio" name="igFormat" value="story"> Story (9:16)
+            </label>
+            <label class="settings__sub-option">
+              <input type="radio" name="igFormat" value="feed"> Feed cuadrado (1:1)
+            </label>
+            <label class="settings__sub-option">
+              <input type="radio" name="igFormat" value="feed-vertical"> Feed vertical (4:5)
+            </label>
+            <label class="settings__sub-option">
+              <input type="radio" name="igFormat" value="feed-horizontal"> Feed horizontal (16:9)
             </label>
           </div>
           <p class="settings__hint" id="platformHint"></p>

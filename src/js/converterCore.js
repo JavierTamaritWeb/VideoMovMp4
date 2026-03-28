@@ -175,7 +175,7 @@ export const PLATFORM_PRESETS = {
   instagram: {
     id: 'instagram',
     label: 'Instagram',
-    description: 'Reels 9:16 o Feed 1:1, máx. 1080p, 30 fps',
+    description: 'Reels, Stories, Feed (1:1, 4:5, 16:9), máx. 1080p, 30 fps',
     icon: 'fa-brands fa-instagram',
     maxWidth: 1080,
     maxHeight: 1920,
@@ -186,6 +186,21 @@ export const PLATFORM_PRESETS = {
     level: '4.0',
     bframes: null,
     aspectRatio: '9:16',
+  },
+  whatsapp: {
+    id: 'whatsapp',
+    label: 'WhatsApp',
+    description: 'Optimizado para envío por WhatsApp, máx. 960×540, 30 fps',
+    icon: 'fa-brands fa-whatsapp',
+    maxWidth: 960,
+    maxHeight: 540,
+    maxFps: 30,
+    maxBitrateKbps: 1500,
+    audioBitrateKbps: 96,
+    profile: 'baseline',
+    level: '3.1',
+    bframes: null,
+    aspectRatio: null,
   },
   youtube: {
     id: 'youtube',
@@ -219,12 +234,22 @@ export function buildVideoFilterChain(preset, inputWidth, inputHeight, igFormat)
   let maxW = preset.maxWidth;
   let maxH = preset.maxHeight;
 
-  // Instagram Feed overrides to 1:1
-  if (preset.id === 'instagram' && igFormat === 'feed') {
-    targetAR = 1;
-    maxW = 1080;
-    maxH = 1080;
-  } else if (preset.aspectRatio) {
+  // Instagram format overrides
+  if (preset.id === 'instagram') {
+    switch (igFormat) {
+      case 'feed':
+        targetAR = 1; maxW = 1080; maxH = 1080; break;
+      case 'feed-vertical':
+        targetAR = 4 / 5; maxW = 1080; maxH = 1350; break;
+      case 'feed-horizontal':
+        targetAR = 16 / 9; maxW = 1080; maxH = 608; break;
+      case 'story':
+        targetAR = 9 / 16; maxW = 1080; maxH = 1920; break;
+      default: // reels — uses preset.aspectRatio (9:16)
+        break;
+    }
+  }
+  if (targetAR === null && preset.aspectRatio) {
     const [arW, arH] = preset.aspectRatio.split(':').map(Number);
     targetAR = arW / arH;
   }

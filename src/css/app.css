@@ -485,12 +485,15 @@ body {
 
 .settings__sub-format {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
+  gap: 0.6rem 1rem;
   margin-top: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  background: var(--bg-elevated);
-  border-radius: var(--radius);
+  margin-left: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: rgba(225, 48, 108, 0.05);
+  border-left: 3px solid #E1306C;
+  border-radius: 0 var(--radius) var(--radius) 0;
 }
 
 .settings__sub-label {
