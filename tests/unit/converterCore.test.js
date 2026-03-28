@@ -613,6 +613,62 @@ describe('buildWatermarkFilter', () => {
     }
   });
 
+  // ── Opacidad ──────────────────────────────────────────────────────────
+  it('opacidad 1 (default) → sin format/colorchannelmixer', () => {
+    const { scaleFilter } = buildWatermarkFilter('center', 20, 1);
+    expect(scaleFilter).toBe('[1:v]scale=iw*20/100:-1[wm]');
+    expect(scaleFilter).not.toContain('colorchannelmixer');
+  });
+  it('sin tercer argumento → opacidad 1 (sin alpha step)', () => {
+    const { scaleFilter } = buildWatermarkFilter('center', 20);
+    expect(scaleFilter).not.toContain('colorchannelmixer');
+  });
+  it('opacidad 0.5 → incluye format=rgba,colorchannelmixer=aa=0.5', () => {
+    const { scaleFilter } = buildWatermarkFilter('center', 20, 0.5);
+    expect(scaleFilter).toBe('[1:v]scale=iw*20/100:-1,format=rgba,colorchannelmixer=aa=0.5[wm]');
+  });
+  it('opacidad 0.3 → aa=0.3', () => {
+    const { scaleFilter } = buildWatermarkFilter('center', 20, 0.3);
+    expect(scaleFilter).toContain('colorchannelmixer=aa=0.3');
+  });
+  it('opacidad 0.1 (mínimo) → aa=0.1', () => {
+    const { scaleFilter } = buildWatermarkFilter('center', 20, 0.1);
+    expect(scaleFilter).toContain('aa=0.1');
+  });
+  it('opacidad < 0.1 se clampea a 0.1', () => {
+    const { scaleFilter } = buildWatermarkFilter('center', 20, 0.01);
+    expect(scaleFilter).toContain('aa=0.1');
+  });
+  it('opacidad > 1 se clampea a 1 (sin alpha step)', () => {
+    const { scaleFilter } = buildWatermarkFilter('center', 20, 1.5);
+    expect(scaleFilter).not.toContain('colorchannelmixer');
+  });
+  it('opacidad 0 se clampea a 0.1', () => {
+    const { scaleFilter } = buildWatermarkFilter('center', 20, 0);
+    expect(scaleFilter).toContain('aa=0.1');
+  });
+  it('opacidad NaN → default 1 (sin alpha step)', () => {
+    const { scaleFilter } = buildWatermarkFilter('center', 20, NaN);
+    expect(scaleFilter).not.toContain('colorchannelmixer');
+  });
+  it('opacidad undefined → default 1', () => {
+    const { scaleFilter } = buildWatermarkFilter('center', 20, undefined);
+    expect(scaleFilter).not.toContain('colorchannelmixer');
+  });
+  it('opacidad string "0.7" → se parsea como 0.7', () => {
+    const { scaleFilter } = buildWatermarkFilter('center', 20, '0.7');
+    expect(scaleFilter).toContain('aa=0.7');
+  });
+  it('opacidad no afecta al overlayFilter', () => {
+    const { overlayFilter } = buildWatermarkFilter('bottom-right', 20, 0.5);
+    expect(overlayFilter).toBe('[0:v][wm]overlay=W-w-10:H-h-10');
+  });
+  it('opacidad se redondea a 2 decimales', () => {
+    const { scaleFilter } = buildWatermarkFilter('center', 20, 0.333);
+    expect(scaleFilter).toContain('aa=0.33');
+    expect(scaleFilter).not.toContain('aa=0.333');
+  });
+
   // ── Integración: filter_complex graph assembly ────────────────────────
   it('scaleFilter + overlayFilter se pueden ensamblar en un filter_complex válido', () => {
     const { scaleFilter, overlayFilter } = buildWatermarkFilter('bottom-right', 20);
@@ -645,6 +701,16 @@ describe('buildWatermarkFilter', () => {
 
     expect(filterComplex).toBe(
       '[0:v]hflip[main];[1:v]scale=iw*25/100:-1[wm];[main][wm]overlay=(W-w)/2:(H-h)/2[v]'
+    );
+  });
+  it('filter_complex con opacidad incluye colorchannelmixer', () => {
+    const { scaleFilter, overlayFilter } = buildWatermarkFilter('bottom-right', 20, 0.5);
+    const mainChain = '[0:v]copy[main]';
+    const overlay = overlayFilter.replace('[0:v]', '[main]');
+    const filterComplex = `${mainChain};${scaleFilter};${overlay}[v]`;
+
+    expect(filterComplex).toBe(
+      '[0:v]copy[main];[1:v]scale=iw*20/100:-1,format=rgba,colorchannelmixer=aa=0.5[wm];[main][wm]overlay=W-w-10:H-h-10[v]'
     );
   });
   it('filter_complex con crop + scale de plataforma se ensambla correctamente', () => {

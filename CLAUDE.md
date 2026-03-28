@@ -37,10 +37,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Graceful shutdown:** SIGTERM/SIGINT kill active FFmpeg processes, close SSE clients, clean temp files.
 - **Platform presets:** `PLATFORM_PRESETS` in `converterCore.js` defines per-platform FFmpeg settings (web, tiktok, instagram, youtube). `buildPlatformArgs()` returns the full FFmpeg args array; `buildVideoFilterChain()` handles aspect ratio crop + scale. When a platform is selected, resolution/encoding-preset controls are hidden and the preset drives those values.
 - **Mirror (hflip):** Toggle in the settings panel. The `hflip` filter is injected into the `-vf` chain in `server.mjs` after args are built (works with both custom and platform paths).
-- **Watermark:** Image overlay with configurable position (5 positions) and size (5-50% of video width). Uses `-filter_complex` with `overlay` when enabled. `WATERMARK_POSITIONS` and `buildWatermarkFilter()` in `converterCore.js`. Image uploaded as second file in multipart form. Placeholder SVG (`src/img/image.svg`) shown when no image selected.
+- **Watermark:** Image overlay with configurable position (5 positions), size (5-50% of video width), and opacity (10-100%). Uses `-filter_complex` with `overlay` when enabled. Opacity < 100% applies `format=rgba,colorchannelmixer=aa={value}` to the watermark stream. `WATERMARK_POSITIONS` and `buildWatermarkFilter(position, size, opacity)` in `converterCore.js`. Image uploaded as second file in multipart form. Placeholder SVG (`src/img/image.svg`) shown when no image selected.
 
 ## Endpoints
-- `POST /api/convert` — Upload MOV + start conversion job (fields: video, quality, resolution, preset, platform, igFormat, mirror, watermark, watermarkPosition, watermarkSize)
+- `POST /api/convert` — Upload MOV + start conversion job (fields: video, quality, resolution, preset, platform, igFormat, mirror, watermark, watermarkPosition, watermarkSize, watermarkOpacity)
 - `GET /api/jobs/:id` — SSE stream with progress events (metadata → progress → done/error)
 - `POST /api/jobs/:id/cancel` — Cancel conversion (sends SIGTERM to FFmpeg)
 - `GET /api/jobs/:id/download` — Download converted MP4

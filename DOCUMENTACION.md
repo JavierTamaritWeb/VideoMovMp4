@@ -62,7 +62,7 @@ VideoMovMp4 es una aplicacion web de una sola pagina (SPA) que convierte archivo
 - Seleccion de preset de velocidad (ultrafast, fast, medium, slow)
 - Presets por plataforma: Web, TikTok (9:16), Instagram (Reels 9:16 / Feed 1:1), YouTube (H.264 High) con ajustes automaticos de resolucion, aspect ratio, fps, bitrate y perfil H.264
 - Espejo horizontal (filtro `hflip` de FFmpeg)
-- Marca de agua configurable: imagen superpuesta con posicion (5 opciones) y tamaño (5-50% del ancho del video) usando `-filter_complex` con `overlay`
+- Marca de agua configurable: imagen superpuesta con posicion (5 opciones), tamaño (5-50% del ancho del video) y opacidad (10-100%) usando `-filter_complex` con `overlay` y `colorchannelmixer`
 - Cancelacion de conversiones en curso
 - Recuperacion automatica de sesion tras refresh del navegador
 - Reconexion SSE automatica con backoff exponencial
@@ -195,7 +195,7 @@ VideoMobMp4/
 │
 ├── tests/
 │   └── unit/
-│       ├── converterCore.test.js  # 116 tests de funciones puras, presets y watermark
+│       ├── converterCore.test.js  # 130 tests de funciones puras, presets y watermark
 │       └── server.test.js         # 7 tests de integracion de la API
 │
 ├── e2e/
@@ -407,6 +407,7 @@ Esto previene ataques como `/../../../etc/passwd` o `/%2e%2e%2f%2e%2e%2fetc%2fpa
   - `watermark` (file, opcional): imagen para marca de agua (PNG, JPG, WebP, SVG)
   - `watermarkPosition` (string, opcional): "top-left"|"top-right"|"bottom-left"|"bottom-right"|"center", default "bottom-right"
   - `watermarkSize` (string, opcional): porcentaje del ancho del video (5-50), default "20"
+  - `watermarkOpacity` (string, opcional): opacidad de la marca de agua (0.1-1.0), default "1"
 
 **Validaciones en orden:**
 1. Rate limiting por IP (5 req/min) → 429 si excedido
@@ -611,6 +612,7 @@ Cada conversion se gestiona como un "job" almacenado en un `Map` en memoria.
   watermarkPath: null,         // Ruta al archivo de imagen (null si no hay)
   watermarkPosition: "bottom-right",  // Posición de la marca de agua
   watermarkSize: 20,           // Porcentaje del ancho del video (5-50)
+  watermarkOpacity: 1,         // Opacidad de la marca de agua (0.1-1.0)
   metadata: {                  // De ffprobe (null hasta que complete)
     duration: 10.5,
     width: 1920,
@@ -1129,7 +1131,7 @@ Las coordenadas usan expresiones FFmpeg: `W` = ancho del video, `H` = alto del v
 
 Define los tamaños predefinidos para la marca de agua (porcentaje del ancho del video): 10%, 15%, 20%, 25%, 30%. El slider de la UI permite valores de 5 a 50.
 
-### 7.17 `buildWatermarkFilter(position, sizePct)`
+### 7.17 `buildWatermarkFilter(position, sizePct, opacity)`
 
 **Proposito:** generar los dos fragmentos de filtro FFmpeg necesarios para aplicar la marca de agua.
 
@@ -1137,16 +1139,22 @@ Define los tamaños predefinidos para la marca de agua (porcentaje del ancho del
 |-----------|------|-------------|
 | `position` | string | Clave de `WATERMARK_POSITIONS` (fallback a `"bottom-right"`) |
 | `sizePct` | number\|string | Porcentaje del ancho del video (clamped 5-50, default 20) |
+| `opacity` | number\|string | Opacidad 0.1-1.0 (default 1). Valores < 1 aplican transparencia |
 | **Retorno** | `{ scaleFilter: string, overlayFilter: string }` | Fragmentos para `-filter_complex` |
 
 **Retorno:**
-- `scaleFilter`: `"[1:v]scale=iw*{pct}/100:-1[wm]"` — escala la imagen de marca de agua relativa al ancho del video principal, manteniendo aspect ratio (`-1`)
+- `scaleFilter`: cadena de filtros para el stream de la marca de agua `[1:v]`:
+  - Opacidad 1 (100%): `"[1:v]scale=iw*{pct}/100:-1[wm]"`
+  - Opacidad < 1: `"[1:v]scale=iw*{pct}/100:-1,format=rgba,colorchannelmixer=aa={opacity}[wm]"`
 - `overlayFilter`: `"[0:v][wm]overlay={x}:{y}"` — superpone la marca de agua en la posicion indicada
 
 **Manejo de entradas invalidas:**
 - Posicion desconocida/null/undefined → fallback a `bottom-right`
 - Tamaño no numerico/NaN/undefined/null → default 20
 - Tamaño fuera de rango → clamped a 5 (min) o 50 (max)
+- Opacidad no numerica/NaN/undefined/null → default 1 (100%, sin alpha step)
+- Opacidad fuera de rango → clamped a 0.1 (min) o 1.0 (max)
+- Opacidad se redondea a 2 decimales
 
 ---
 
@@ -1448,7 +1456,7 @@ npm run test:watch    # Modo watch (vitest)
 
 ### 10.2 Tests de funciones puras (converterCore.test.js)
 
-Archivo: `tests/unit/converterCore.test.js` — 116 tests.
+Archivo: `tests/unit/converterCore.test.js` — 130 tests.
 
 | Grupo `describe` | Tests | Que verifica |
 |-------------------|-------|-------------|
@@ -1468,7 +1476,7 @@ Archivo: `tests/unit/converterCore.test.js` — 116 tests.
 | `buildPlatformArgs` | 8 | Null para custom, profile/level por plataforma, fps cap, maxrate, YouTube bf/audio, calidad variable, codecs presentes |
 | `WATERMARK_POSITIONS` | 7 | 5 posiciones presentes, propiedades label/x/y, coordenadas exactas por posicion |
 | `WATERMARK_SIZES` | 2 | 5 tamaños de 10 a 30, labels con formato `N%` |
-| `buildWatermarkFilter` | 32 | Estructura de retorno, formato scaleFilter/overlayFilter, cada posicion genera coordenadas correctas, tamaños predefinidos e intermedios, clamping min/max, entradas invalidas (null/undefined/NaN/string), posicion desconocida, combinaciones posicion+tamaño, formato FFmpeg sin espacios, ensamblaje filter_complex con filtros previos |
+| `buildWatermarkFilter` | 46 | Estructura de retorno, formato scaleFilter/overlayFilter, cada posicion genera coordenadas correctas, tamaños predefinidos e intermedios, clamping min/max, entradas invalidas (null/undefined/NaN/string), posicion desconocida, combinaciones posicion+tamaño, formato FFmpeg sin espacios, ensamblaje filter_complex con filtros previos, opacidad (valores validos 0.1-1.0, clamping, default, entradas invalidas, redondeo 2 decimales, format=rgba+colorchannelmixer, integracion filter_complex con opacidad) |
 
 **Helper de test:**
 ```javascript
@@ -1612,6 +1620,7 @@ Descripcion paso a paso de una conversion exitosa:
    - watermark: imagen (si activada)
    - watermarkPosition: "bottom-right"
    - watermarkSize: "20"
+   - watermarkOpacity: "0.5" (50% de opacidad)
      ↓
 7. SERVIDOR (server.mjs) recibe la peticion:
    a. Rate limit: ¿< 5 req/min para esta IP? → Si

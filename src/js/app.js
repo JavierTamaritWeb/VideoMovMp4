@@ -67,6 +67,8 @@ const watermarkRemove = $('#watermarkRemove');
 const watermarkPosition = $('#watermarkPosition');
 const watermarkSize = $('#watermarkSize');
 const watermarkSizeValue = $('#watermarkSizeValue');
+const watermarkOpacity = $('#watermarkOpacity');
+const watermarkOpacityValue = $('#watermarkOpacityValue');
 let watermarkFile = null;
 
 // ─── Notyf ───────────────────────────────────────────────────────────────────
@@ -133,6 +135,10 @@ watermarkRemove.addEventListener('click', () => {
 
 watermarkSize.addEventListener('input', () => {
   watermarkSizeValue.textContent = watermarkSize.value;
+});
+
+watermarkOpacity.addEventListener('input', () => {
+  watermarkOpacityValue.textContent = watermarkOpacity.value;
 });
 
 // ─── UI State Machine ────────────────────────────────────────────────────────
@@ -282,6 +288,7 @@ async function startConversion() {
     formData.append('watermark', watermarkFile);
     formData.append('watermarkPosition', watermarkPosition.value);
     formData.append('watermarkSize', watermarkSize.value);
+    formData.append('watermarkOpacity', String(watermarkOpacity.value / 100));
   }
   if (selectedPlatform === 'instagram') {
     const igFormat = document.querySelector('input[name="igFormat"]:checked')?.value || 'reels';
@@ -506,6 +513,8 @@ function resetAll() {
   watermarkPosition.value = 'bottom-right';
   watermarkSize.value = 20;
   watermarkSizeValue.textContent = '20';
+  watermarkOpacity.value = 100;
+  watermarkOpacityValue.textContent = '100';
 
   // Reset platform selection
   selectedPlatform = 'custom';

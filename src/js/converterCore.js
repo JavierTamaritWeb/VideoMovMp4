@@ -324,14 +324,19 @@ export const WATERMARK_SIZES = {
   30:  { label: '30%' },
 };
 
-export function buildWatermarkFilter(position, sizePct) {
+export function buildWatermarkFilter(position, sizePct, opacity) {
   const pos = WATERMARK_POSITIONS[position] || WATERMARK_POSITIONS['bottom-right'];
-  const parsed = parseInt(sizePct);
-  const pct = Math.max(5, Math.min(50, Number.isFinite(parsed) ? parsed : 20));
+  const parsedSize = parseInt(sizePct);
+  const pct = Math.max(5, Math.min(50, Number.isFinite(parsedSize) ? parsedSize : 20));
+
+  const parsedOpacity = parseFloat(opacity);
+  const alpha = Math.max(0.1, Math.min(1, Number.isFinite(parsedOpacity) ? parsedOpacity : 1));
+  const alphaRounded = Math.round(alpha * 100) / 100;
 
   // [1:v] is the watermark input; scale it relative to main video width
-  // iw = main video width (from [0:v])
-  const scaleFilter = `[1:v]scale=iw*${pct}/100:-1[wm]`;
+  const scaleStep = `scale=iw*${pct}/100:-1`;
+  const alphaStep = alphaRounded < 1 ? `,format=rgba,colorchannelmixer=aa=${alphaRounded}` : '';
+  const scaleFilter = `[1:v]${scaleStep}${alphaStep}[wm]`;
   const overlayFilter = `[0:v][wm]overlay=${pos.x}:${pos.y}`;
 
   return { scaleFilter, overlayFilter };

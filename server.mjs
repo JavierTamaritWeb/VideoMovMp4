@@ -116,7 +116,7 @@ function checkRateLimit(ip) {
 // ─── Jobs system ─────────────────────────────────────────────────────────────
 const jobs = new Map();
 
-function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat, mirror, watermarkPath, watermarkPosition, watermarkSize) {
+function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat, mirror, watermarkPath, watermarkPosition, watermarkSize, watermarkOpacity) {
   const id = uuidv4();
   const outputPath = path.join(CONVERTED_DIR, `${id}.mp4`);
   const job = {
@@ -135,6 +135,7 @@ function createJob(inputPath, originalFilename, sanitized, quality, resolution, 
     watermarkPath: watermarkPath || null,
     watermarkPosition: watermarkPosition || 'bottom-right',
     watermarkSize: parseInt(watermarkSize) || 20,
+    watermarkOpacity: parseFloat(watermarkOpacity) || 1,
     metadata: null,
     progress: { percent: 0, fps: 0, speed: '', elapsed: 0, eta: 0 },
     ffmpegProcess: null,
@@ -279,7 +280,7 @@ function startConversion(job) {
 
   // Inject watermark overlay (requires -filter_complex instead of -vf)
   if (job.watermarkPath) {
-    const { scaleFilter, overlayFilter } = buildWatermarkFilter(job.watermarkPosition, job.watermarkSize);
+    const { scaleFilter, overlayFilter } = buildWatermarkFilter(job.watermarkPosition, job.watermarkSize, job.watermarkOpacity);
 
     // Add watermark as second input right after the first -i
     const firstInputIdx = args.indexOf('-i');
@@ -636,6 +637,7 @@ export const server = http.createServer(async (req, res) => {
         watermarkPath,
         fields.watermarkPosition || 'bottom-right',
         fields.watermarkSize || '20',
+        fields.watermarkOpacity || '1',
       );
       // Override the job id to match the one used for the file
       jobs.delete(job.id);
