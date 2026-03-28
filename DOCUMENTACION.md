@@ -62,7 +62,9 @@ VideoMovMp4 es una aplicacion web de una sola pagina (SPA) que convierte archivo
 - Seleccion de preset de velocidad (ultrafast, fast, medium, slow)
 - Presets por plataforma: Web, TikTok (9:16), Instagram (Reels 9:16 / Feed 1:1), YouTube (H.264 High) con ajustes automaticos de resolucion, aspect ratio, fps, bitrate y perfil H.264
 - Espejo horizontal (filtro `hflip` de FFmpeg)
-- Marca de agua configurable: imagen superpuesta con posicion (5 opciones), tamaño (5-50% del ancho del video) y opacidad (10-100%) usando `-filter_complex` con `overlay` y `colorchannelmixer`
+- Marca de agua de imagen: superpuesta con posicion (5 presets + arrastre libre), tamaño (5-50%), opacidad (10-100%), preview visual interactivo con drag. Usa `-filter_complex` con `overlay`
+- Marca de agua de texto: texto con fuente configurable (Montserrat Alternates regular/bold, Arial, Courier, Times), tamaño (12-200px), color (hex), opacidad, posicion (5 presets + arrastre libre), preview visual con drag. Usa FFmpeg `drawtext`
+- Previsualizaciones sincronizadas con espejo horizontal (hflip) en tiempo real
 - Cancelacion de conversiones en curso
 - Recuperacion automatica de sesion tras refresh del navegador
 - Reconexion SSE automatica con backoff exponencial
@@ -189,13 +191,16 @@ VideoMobMp4/
 │   │   └── app.css                # Dark theme, BEM, responsive
 │   └── js/
 │       ├── app.js                 # Logica UI: upload, SSE, estados, descarga
-│       └── converterCore.js       # Funciones puras sin dependencias + presets + watermark
-│   └── img/
-│       └── image.svg             # Placeholder SVG para marca de agua
+│       └── converterCore.js       # Funciones puras + presets + watermark + drawtext
+│   ├── img/
+│   │   └── image.svg             # Placeholder SVG para marca de agua
+│   └── fonts/
+│       ├── MontserratAlternates-Regular.ttf
+│       └── MontserratAlternates-Bold.ttf
 │
 ├── tests/
 │   └── unit/
-│       ├── converterCore.test.js  # 130 tests de funciones puras, presets y watermark
+│       ├── converterCore.test.js  # 186 tests (funciones puras, presets, watermark, drawtext)
 │       └── server.test.js         # 7 tests de integracion de la API
 │
 ├── e2e/
@@ -408,6 +413,12 @@ Esto previene ataques como `/../../../etc/passwd` o `/%2e%2e%2f%2e%2e%2fetc%2fpa
   - `watermarkPosition` (string, opcional): "top-left"|"top-right"|"bottom-left"|"bottom-right"|"center", default "bottom-right"
   - `watermarkSize` (string, opcional): porcentaje del ancho del video (5-50), default "20"
   - `watermarkOpacity` (string, opcional): opacidad de la marca de agua (0.1-1.0), default "1"
+  - `textWm` (string, opcional): texto para marca de agua de texto
+  - `textWmFont` (string, opcional): "montserrat"|"montserrat-bold"|"arial"|"courier"|"times", default "arial"
+  - `textWmSize` (string, opcional): tamaño en pixels (12-200), default "48"
+  - `textWmColor` (string, opcional): color hex (#rrggbb), default "#ffffff"
+  - `textWmOpacity` (string, opcional): opacidad (0.1-1.0), default "1"
+  - `textWmPosition` (string, opcional): posicion (mismos valores que watermarkPosition + "custom:X:Y"), default "bottom-right"
 
 **Validaciones en orden:**
 1. Rate limiting por IP (5 req/min) → 429 si excedido
@@ -613,6 +624,14 @@ Cada conversion se gestiona como un "job" almacenado en un `Map` en memoria.
   watermarkPosition: "bottom-right",  // Posición de la marca de agua
   watermarkSize: 20,           // Porcentaje del ancho del video (5-50)
   watermarkOpacity: 1,         // Opacidad de la marca de agua (0.1-1.0)
+  textWm: {                    // Marca de agua de texto (null si no hay)
+    text: "Mi Logo",
+    font: "montserrat",
+    size: "64",
+    color: "#ff0000",
+    opacity: "0.7",
+    position: "bottom-right"   // O "custom:X:Y"
+  },
   metadata: {                  // De ffprobe (null hasta que complete)
     duration: 10.5,
     width: 1920,
@@ -741,7 +760,9 @@ ffmpeg -i input.mov -i logo.png \
   -c:v libx264 -crf 21 ... -y output.mp4
 ```
 
-La cadena `-vf` existente (scale, crop, hflip) se integra como primer paso del grafo `filter_complex`. Las posiciones disponibles son:
+La cadena `-vf` existente (scale, crop, hflip) se integra como primer paso del grafo `filter_complex`. Las posiciones disponibles son (iguales para imagen y texto, incluyendo formato `custom:X:Y` con pixels absolutos):
+
+La posicion tambien acepta formato `custom:X:Y` con coordenadas absolutas en pixels del video, generadas al arrastrar la marca de agua en el preview interactivo.
 
 | Posicion | Coordenadas overlay |
 |----------|-------------------|
@@ -750,6 +771,23 @@ La cadena `-vf` existente (scale, crop, hflip) se integra como primer paso del g
 | Abajo izquierda | `10:H-h-10` |
 | Abajo derecha | `W-w-10:H-h-10` |
 | Centro | `(W-w)/2:(H-h)/2` |
+| Personalizado | `X:Y` (pixels absolutos, desde drag) |
+
+**Con marca de agua de texto** (si `textWm` presente):
+
+El texto se renderiza con el filtro `drawtext` de FFmpeg. Se añade a la cadena `-vf` o al final del `-filter_complex` si hay marca de agua de imagen activa:
+
+```bash
+# Solo texto
+ffmpeg -i input.mov \
+  -vf "drawtext=fontfile=/ruta/fonts/MontserratAlternates-Regular.ttf:text='Mi Logo':fontsize=64:fontcolor=#ff0000@0xb3:x=W-w-10:y=H-h-10" \
+  -c:v libx264 ... -y output.mp4
+
+# Texto + imagen watermark (encadenado en filter_complex)
+... [main][wm]overlay=...[v2];[v2]drawtext=...[v]
+```
+
+Fuentes disponibles: Montserrat Alternates (regular/bold) via `fontfile=` con TTF embebido en `src/fonts/`, o Arial/Courier/Times via `font=` (fuentes del sistema). El color incluye opacidad como hex alpha: `#rrggbb@0xAA`.
 
 **Flags explicados:**
 
@@ -1156,6 +1194,64 @@ Define los tamaños predefinidos para la marca de agua (porcentaje del ancho del
 - Opacidad fuera de rango → clamped a 0.1 (min) o 1.0 (max)
 - Opacidad se redondea a 2 decimales
 
+### 7.18 `parseWatermarkPosition(position)`
+
+**Proposito:** parsear posicion de marca de agua, soportando presets y formato custom.
+
+| Parametro | Tipo | Descripcion |
+|-----------|------|-------------|
+| `position` | string | Clave de preset (`"top-left"`, etc.) o formato `"custom:X:Y"` (pixels absolutos) |
+| **Retorno** | `{ x: string, y: string }` | Coordenadas para FFmpeg overlay/drawtext |
+
+Logica: si empieza con `custom:`, parsea X e Y como enteros no negativos. Si invalido o preset desconocido, fallback a `bottom-right`.
+
+### 7.19 `WATERMARK_FONTS`
+
+**Tipo:** objeto exportado (constante).
+
+| Clave | Label | Archivo TTF | CSS (preview) |
+|-------|-------|:-----------:|---------------|
+| `montserrat` | Montserrat Alternates | `MontserratAlternates-Regular.ttf` | `'Montserrat Alternates', sans-serif` |
+| `montserrat-bold` | Montserrat Alternates Bold | `MontserratAlternates-Bold.ttf` | `'Montserrat Alternates', sans-serif` |
+| `arial` | Arial | (sistema) | `Arial, sans-serif` |
+| `courier` | Courier | (sistema) | `'Courier New', Courier, monospace` |
+| `times` | Times New Roman | (sistema) | `'Times New Roman', Times, serif` |
+
+Fuentes con `file` usan `fontfile=` en FFmpeg (ruta al TTF). Fuentes del sistema (`file: null`) usan `font=` (fontconfig).
+
+### 7.20 `escapeDrawtext(text)`
+
+**Proposito:** escapar texto para el filtro `drawtext` de FFmpeg.
+
+| Entrada | Salida |
+|---------|--------|
+| `Hello World` | `Hello World` |
+| `10:30` | `10\:30` |
+| `50%` | `50%%` |
+| `it's` | `it\u2019s` |
+| `null` / `undefined` | `""` |
+
+### 7.21 `buildTextWatermarkFilter(text, fontSize, fontColor, fontFamily, position, opacity)`
+
+**Proposito:** generar la cadena de filtro `drawtext` de FFmpeg para marca de agua de texto.
+
+| Parametro | Tipo | Descripcion |
+|-----------|------|-------------|
+| `text` | string | Texto a superponer (se escapa automaticamente) |
+| `fontSize` | number\|string | Tamaño en pixels (clamped 12-200, default 48) |
+| `fontColor` | string | Color hex `#rrggbb` (fallback `#ffffff`) |
+| `fontFamily` | string | Clave de `WATERMARK_FONTS` (fallback `arial`) |
+| `position` | string | Preset o `custom:X:Y` (via `parseWatermarkPosition`) |
+| `opacity` | number\|string | Opacidad 0.1-1.0 (default 1). Se codifica como hex alpha en el color |
+| **Retorno** | string | Filtro drawtext completo, o `""` si texto vacio/null |
+
+**Formato de salida:**
+```
+drawtext=fontfile=FONTDIR/MontserratAlternates-Regular.ttf:text='Mi Logo':fontsize=64:fontcolor=#ff0000@0xb3:x=W-w-10:y=H-h-10
+```
+
+El placeholder `FONTDIR/` es reemplazado por la ruta real en `server.mjs`. La opacidad se convierte a hex alpha (`0xff` = 100%, `0x80` = 50%).
+
 ---
 
 ## 8. Frontend — interfaz de usuario
@@ -1178,7 +1274,7 @@ Archivo de 237 lineas. SPA (Single Page Application) con estructura semantica HT
 | ID | Seccion | Visible cuando |
 |----|---------|---------------|
 | `panelUpload` | Zona de subida (drag & drop + file info) | `idle`, `configuring` |
-| `panelSettings` | Opciones de conversion (plataforma, calidad, espejo, marca de agua, resolucion, preset) | `configuring` |
+| `panelSettings` | Opciones de conversion (plataforma, calidad, espejo, marca de agua imagen, marca de agua texto, resolucion, preset) | `configuring` |
 | `panelProgress` | Barra de progreso + stats en tiempo real | `converting` |
 | `panelResult` | Preview + comparativa + descarga | `done` |
 | `panelError` | Mensaje de error + boton reintentar | `error` |
@@ -1268,6 +1364,10 @@ import {
 | `uiState` | string | Estado actual de la UI |
 | `selectedPlatform` | string | Plataforma seleccionada (`"custom"`, `"web"`, `"tiktok"`, `"instagram"`, `"youtube"`) |
 | `watermarkFile` | File\|null | Archivo de imagen para marca de agua |
+| `watermarkCustomX` | number\|null | Posicion X relativa (0-1) de la marca de agua imagen (drag) |
+| `watermarkCustomY` | number\|null | Posicion Y relativa (0-1) de la marca de agua imagen (drag) |
+| `textWmCustomX` | number\|null | Posicion X relativa (0-1) de la marca de agua texto (drag) |
+| `textWmCustomY` | number\|null | Posicion Y relativa (0-1) de la marca de agua texto (drag) |
 
 ### 8.4 Maquina de estados de la UI
 
@@ -1456,7 +1556,7 @@ npm run test:watch    # Modo watch (vitest)
 
 ### 10.2 Tests de funciones puras (converterCore.test.js)
 
-Archivo: `tests/unit/converterCore.test.js` — 130 tests.
+Archivo: `tests/unit/converterCore.test.js` — 186 tests.
 
 | Grupo `describe` | Tests | Que verifica |
 |-------------------|-------|-------------|
@@ -1477,6 +1577,11 @@ Archivo: `tests/unit/converterCore.test.js` — 130 tests.
 | `WATERMARK_POSITIONS` | 7 | 5 posiciones presentes, propiedades label/x/y, coordenadas exactas por posicion |
 | `WATERMARK_SIZES` | 2 | 5 tamaños de 10 a 30, labels con formato `N%` |
 | `buildWatermarkFilter` | 46 | Estructura de retorno, formato scaleFilter/overlayFilter, cada posicion genera coordenadas correctas, tamaños predefinidos e intermedios, clamping min/max, entradas invalidas (null/undefined/NaN/string), posicion desconocida, combinaciones posicion+tamaño, formato FFmpeg sin espacios, ensamblaje filter_complex con filtros previos, opacidad (valores validos 0.1-1.0, clamping, default, entradas invalidas, redondeo 2 decimales, format=rgba+colorchannelmixer, integracion filter_complex con opacidad) |
+| `parseWatermarkPosition` | 15 | Presets conocidos (top-left, bottom-right, center), custom valido (350:200, 0:0, 1920:1080), custom invalido (abc, incompleto, negativo, vacio), entradas invalidas (null, undefined, numero) |
+| `buildWatermarkFilter custom` | 5 | Custom overlay coords, custom:0:0, preserva scaleFilter+opacidad, custom invalido fallback, filter_complex con custom |
+| `WATERMARK_FONTS` | 4 | 5 fuentes presentes, label+css en cada una, TTF para Montserrat, null para sistema |
+| `escapeDrawtext` | 9 | Texto normal, escape dos puntos, escape porcentaje, comillas unicode, null/undefined/vacio/numero, multiples especiales |
+| `buildTextWatermarkFilter` | 24 | Drawtext valido, font= vs fontfile=, posiciones, fontsize clamp, color valido/invalido, opacidad hex, fuente desconocida, texto vacio/null/undefined/espacios, escapado, integracion con filter chain |
 
 **Helper de test:**
 ```javascript
@@ -1606,7 +1711,9 @@ Descripcion paso a paso de una conversion exitosa:
 4. USUARIO selecciona plataforma (ej. TikTok) o "Personalizado"
    - Si plataforma seleccionada: controles de resolucion/preset se ocultan
    - Ajusta calidad (75), opcionalmente activa espejo horizontal
-   - Opcionalmente activa marca de agua: selecciona imagen, posicion y tamaño
+   - Opcionalmente activa marca de agua imagen: selecciona imagen, arrastra sobre preview o elige posicion, tamaño y opacidad
+   - Opcionalmente activa marca de agua texto: escribe texto, elige fuente/tamaño/color, arrastra sobre preview o elige posicion
+   - Los previews de marcas de agua reflejan el espejo en tiempo real
      ↓
 5. USUARIO pulsa "Convertir a MP4" (o Ctrl+Enter)
      ↓
@@ -1621,6 +1728,12 @@ Descripcion paso a paso de una conversion exitosa:
    - watermarkPosition: "bottom-right"
    - watermarkSize: "20"
    - watermarkOpacity: "0.5" (50% de opacidad)
+   - textWm: "Mi Logo" (si activado)
+   - textWmFont: "montserrat"
+   - textWmSize: "64"
+   - textWmColor: "#ff0000"
+   - textWmOpacity: "0.7"
+   - textWmPosition: "bottom-right" (o "custom:X:Y" si arrastrado)
      ↓
 7. SERVIDOR (server.mjs) recibe la peticion:
    a. Rate limit: ¿< 5 req/min para esta IP? → Si
@@ -1649,7 +1762,8 @@ Descripcion paso a paso de una conversion exitosa:
            -maxrate 2500k -bufsize 5000k -c:a aac -b:a 128k
            -movflags +faststart -pix_fmt yuv420p -progress pipe:1 -y output.mp4
     # Si mirror activado, se añade hflip a la cadena -vf
-    # Si watermark activado, se usa -filter_complex con overlay en lugar de -vf
+    # Si watermark imagen activado, se usa -filter_complex con overlay en lugar de -vf
+    # Si textWm activado, se añade drawtext al final de -vf o -filter_complex
       ↓
 12. SERVIDOR parsea progreso de stdout (cada bloque "progress=continue"):
     - Calcula percent, fps, speed, elapsed, eta

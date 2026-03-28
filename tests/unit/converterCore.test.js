@@ -16,7 +16,11 @@ import {
   buildPlatformArgs,
   WATERMARK_POSITIONS,
   WATERMARK_SIZES,
+  parseWatermarkPosition,
   buildWatermarkFilter,
+  WATERMARK_FONTS,
+  escapeDrawtext,
+  buildTextWatermarkFilter,
 } from '../../src/js/converterCore.js';
 
 // Helper: build fake magic bytes
@@ -723,5 +727,289 @@ describe('buildWatermarkFilter', () => {
     expect(filterComplex).toContain('[0:v]crop=608:1080,scale=608:-2[main]');
     expect(filterComplex).toContain('[1:v]scale=iw*10/100:-1[wm]');
     expect(filterComplex).toContain('[main][wm]overlay=10:H-h-10[v]');
+  });
+});
+
+// ─── parseWatermarkPosition ─────────────────────────────────────────────────
+
+describe('parseWatermarkPosition', () => {
+  // ── Presets ────────────────────────────────────────────────────────────
+  it('devuelve coordenadas de preset conocido (top-left)', () => {
+    const pos = parseWatermarkPosition('top-left');
+    expect(pos.x).toBe('10');
+    expect(pos.y).toBe('10');
+  });
+  it('devuelve coordenadas de preset conocido (bottom-right)', () => {
+    const pos = parseWatermarkPosition('bottom-right');
+    expect(pos.x).toBe('W-w-10');
+    expect(pos.y).toBe('H-h-10');
+  });
+  it('devuelve coordenadas de preset conocido (center)', () => {
+    const pos = parseWatermarkPosition('center');
+    expect(pos.x).toBe('(W-w)/2');
+    expect(pos.y).toBe('(H-h)/2');
+  });
+
+  // ── Custom válido ─────────────────────────────────────────────────────
+  it('parsea custom:350:200', () => {
+    const pos = parseWatermarkPosition('custom:350:200');
+    expect(pos.x).toBe('350');
+    expect(pos.y).toBe('200');
+  });
+  it('parsea custom:0:0', () => {
+    const pos = parseWatermarkPosition('custom:0:0');
+    expect(pos.x).toBe('0');
+    expect(pos.y).toBe('0');
+  });
+  it('parsea custom con valores grandes (1920:1080)', () => {
+    const pos = parseWatermarkPosition('custom:1920:1080');
+    expect(pos.x).toBe('1920');
+    expect(pos.y).toBe('1080');
+  });
+
+  // ── Custom inválido → fallback ────────────────────────────────────────
+  it('custom:abc:def → fallback a bottom-right', () => {
+    const pos = parseWatermarkPosition('custom:abc:def');
+    expect(pos.x).toBe('W-w-10');
+  });
+  it('custom:100 (incompleto) → fallback a bottom-right', () => {
+    const pos = parseWatermarkPosition('custom:100');
+    expect(pos.x).toBe('W-w-10');
+  });
+  it('custom:-10:200 (negativo) → fallback a bottom-right', () => {
+    const pos = parseWatermarkPosition('custom:-10:200');
+    expect(pos.x).toBe('W-w-10');
+  });
+  it('custom: vacío → fallback a bottom-right', () => {
+    const pos = parseWatermarkPosition('custom::');
+    expect(pos.x).toBe('W-w-10');
+  });
+
+  // ── Entradas inválidas ────────────────────────────────────────────────
+  it('string desconocido → fallback a bottom-right', () => {
+    const pos = parseWatermarkPosition('unknown');
+    expect(pos.x).toBe('W-w-10');
+    expect(pos.y).toBe('H-h-10');
+  });
+  it('null → fallback a bottom-right', () => {
+    const pos = parseWatermarkPosition(null);
+    expect(pos.x).toBe('W-w-10');
+  });
+  it('undefined → fallback a bottom-right', () => {
+    const pos = parseWatermarkPosition(undefined);
+    expect(pos.x).toBe('W-w-10');
+  });
+  it('número → fallback a bottom-right', () => {
+    const pos = parseWatermarkPosition(42);
+    expect(pos.x).toBe('W-w-10');
+  });
+});
+
+describe('buildWatermarkFilter con posición custom', () => {
+  it('custom:350:200 → overlay=350:200', () => {
+    const { overlayFilter } = buildWatermarkFilter('custom:350:200', 20);
+    expect(overlayFilter).toBe('[0:v][wm]overlay=350:200');
+  });
+  it('custom:0:0 → overlay=0:0', () => {
+    const { overlayFilter } = buildWatermarkFilter('custom:0:0', 20);
+    expect(overlayFilter).toBe('[0:v][wm]overlay=0:0');
+  });
+  it('custom preserva scaleFilter y opacidad', () => {
+    const { scaleFilter, overlayFilter } = buildWatermarkFilter('custom:100:50', 25, 0.5);
+    expect(scaleFilter).toContain('iw*25/100');
+    expect(scaleFilter).toContain('colorchannelmixer=aa=0.5');
+    expect(overlayFilter).toBe('[0:v][wm]overlay=100:50');
+  });
+  it('custom inválido → fallback a bottom-right', () => {
+    const { overlayFilter } = buildWatermarkFilter('custom:bad:data', 20);
+    expect(overlayFilter).toBe('[0:v][wm]overlay=W-w-10:H-h-10');
+  });
+  it('filter_complex con custom se ensambla correctamente', () => {
+    const { scaleFilter, overlayFilter } = buildWatermarkFilter('custom:500:300', 15, 0.8);
+    const mainChain = '[0:v]scale=1920:-2[main]';
+    const overlay = overlayFilter.replace('[0:v]', '[main]');
+    const filterComplex = `${mainChain};${scaleFilter};${overlay}[v]`;
+    expect(filterComplex).toContain('overlay=500:300[v]');
+    expect(filterComplex).toContain('aa=0.8');
+  });
+});
+
+// ─── Text Watermark ─────────────────────────────────────────────────────────
+
+describe('WATERMARK_FONTS', () => {
+  it('contiene las 5 fuentes esperadas', () => {
+    const keys = Object.keys(WATERMARK_FONTS);
+    expect(keys).toEqual(
+      expect.arrayContaining(['montserrat', 'montserrat-bold', 'arial', 'courier', 'times'])
+    );
+  });
+  it('cada fuente tiene label y css', () => {
+    for (const font of Object.values(WATERMARK_FONTS)) {
+      expect(typeof font.label).toBe('string');
+      expect(typeof font.css).toBe('string');
+    }
+  });
+  it('montserrat tiene file apuntando a TTF', () => {
+    expect(WATERMARK_FONTS.montserrat.file).toContain('.ttf');
+    expect(WATERMARK_FONTS['montserrat-bold'].file).toContain('.ttf');
+  });
+  it('fuentes del sistema tienen file null', () => {
+    expect(WATERMARK_FONTS.arial.file).toBeNull();
+    expect(WATERMARK_FONTS.courier.file).toBeNull();
+    expect(WATERMARK_FONTS.times.file).toBeNull();
+  });
+});
+
+describe('escapeDrawtext', () => {
+  it('texto normal no cambia', () => {
+    expect(escapeDrawtext('Hello World')).toBe('Hello World');
+  });
+  it('escapa dos puntos con \\:', () => {
+    expect(escapeDrawtext('10:30')).toBe('10\\:30');
+  });
+  it('escapa porcentaje con %%', () => {
+    expect(escapeDrawtext('50%')).toBe('50%%');
+  });
+  it('reemplaza comillas simples por unicode', () => {
+    const result = escapeDrawtext("it's");
+    expect(result).not.toContain("'");
+    expect(result).toContain('\u2019');
+  });
+  it('null → string vacío', () => {
+    expect(escapeDrawtext(null)).toBe('');
+  });
+  it('undefined → string vacío', () => {
+    expect(escapeDrawtext(undefined)).toBe('');
+  });
+  it('string vacío → string vacío', () => {
+    expect(escapeDrawtext('')).toBe('');
+  });
+  it('número → string vacío', () => {
+    expect(escapeDrawtext(42)).toBe('');
+  });
+  it('maneja múltiples caracteres especiales', () => {
+    const result = escapeDrawtext("100%: it's done");
+    expect(result).toContain('100%%');
+    expect(result).toContain('\\:');
+  });
+});
+
+describe('buildTextWatermarkFilter', () => {
+  // ── Casos básicos ─────────────────────────────────────────────────────
+  it('genera filtro drawtext válido', () => {
+    const f = buildTextWatermarkFilter('Hola', 48, '#ffffff', 'arial', 'center', 1);
+    expect(f).toContain('drawtext=');
+    expect(f).toContain("text='Hola'");
+    expect(f).toContain('fontsize=48');
+    expect(f).toContain('fontcolor=#ffffff@0xff');
+  });
+  it('usa font= para fuentes del sistema', () => {
+    const f = buildTextWatermarkFilter('Test', 48, '#ffffff', 'arial', 'center', 1);
+    expect(f).toContain("font='Arial'");
+    expect(f).not.toContain('fontfile');
+  });
+  it('usa fontfile= para Montserrat', () => {
+    const f = buildTextWatermarkFilter('Test', 48, '#ffffff', 'montserrat', 'center', 1);
+    expect(f).toContain('fontfile=FONTDIR/MontserratAlternates-Regular.ttf');
+    expect(f).not.toContain("font='");
+  });
+  it('usa fontfile= para Montserrat Bold', () => {
+    const f = buildTextWatermarkFilter('Test', 48, '#ffffff', 'montserrat-bold', 'center', 1);
+    expect(f).toContain('MontserratAlternates-Bold.ttf');
+  });
+
+  // ── Posiciones ────────────────────────────────────────────────────────
+  it('top-left → x=10:y=10', () => {
+    const f = buildTextWatermarkFilter('Test', 48, '#ffffff', 'arial', 'top-left', 1);
+    expect(f).toContain('x=10:y=10');
+  });
+  it('bottom-right → x=W-w-10:y=H-h-10', () => {
+    const f = buildTextWatermarkFilter('Test', 48, '#ffffff', 'arial', 'bottom-right', 1);
+    expect(f).toContain('x=W-w-10:y=H-h-10');
+  });
+  it('center → x=(W-w)/2:y=(H-h)/2', () => {
+    const f = buildTextWatermarkFilter('Test', 48, '#ffffff', 'arial', 'center', 1);
+    expect(f).toContain('x=(W-w)/2:y=(H-h)/2');
+  });
+
+  // ── Tamaño ────────────────────────────────────────────────────────────
+  it('fontsize se clampea mínimo 12', () => {
+    const f = buildTextWatermarkFilter('Test', 5, '#ffffff', 'arial', 'center', 1);
+    expect(f).toContain('fontsize=12');
+  });
+  it('fontsize se clampea máximo 200', () => {
+    const f = buildTextWatermarkFilter('Test', 300, '#ffffff', 'arial', 'center', 1);
+    expect(f).toContain('fontsize=200');
+  });
+  it('fontsize inválido → default 48', () => {
+    const f = buildTextWatermarkFilter('Test', 'abc', '#ffffff', 'arial', 'center', 1);
+    expect(f).toContain('fontsize=48');
+  });
+
+  // ── Color ─────────────────────────────────────────────────────────────
+  it('color válido #ff0000 se usa correctamente', () => {
+    const f = buildTextWatermarkFilter('Test', 48, '#ff0000', 'arial', 'center', 1);
+    expect(f).toContain('fontcolor=#ff0000@0xff');
+  });
+  it('color inválido → fallback #ffffff', () => {
+    const f = buildTextWatermarkFilter('Test', 48, 'rojo', 'arial', 'center', 1);
+    expect(f).toContain('fontcolor=#ffffff');
+  });
+  it('color null → fallback #ffffff', () => {
+    const f = buildTextWatermarkFilter('Test', 48, null, 'arial', 'center', 1);
+    expect(f).toContain('fontcolor=#ffffff');
+  });
+
+  // ── Opacidad ──────────────────────────────────────────────────────────
+  it('opacidad 1 → @0xff', () => {
+    const f = buildTextWatermarkFilter('Test', 48, '#ffffff', 'arial', 'center', 1);
+    expect(f).toContain('@0xff');
+  });
+  it('opacidad 0.5 → @0x80', () => {
+    const f = buildTextWatermarkFilter('Test', 48, '#ffffff', 'arial', 'center', 0.5);
+    expect(f).toContain('@0x80');
+  });
+  it('opacidad 0.1 → valor hex bajo', () => {
+    const f = buildTextWatermarkFilter('Test', 48, '#ffffff', 'arial', 'center', 0.1);
+    expect(f).toMatch(/@0x1[9a]/);
+  });
+
+  // ── Fuente desconocida ────────────────────────────────────────────────
+  it('fuente desconocida → fallback a Arial', () => {
+    const f = buildTextWatermarkFilter('Test', 48, '#ffffff', 'unknown', 'center', 1);
+    expect(f).toContain("font='Arial'");
+  });
+
+  // ── Texto inválido ────────────────────────────────────────────────────
+  it('texto vacío → string vacío', () => {
+    expect(buildTextWatermarkFilter('', 48, '#ffffff', 'arial', 'center', 1)).toBe('');
+  });
+  it('texto solo espacios → string vacío', () => {
+    expect(buildTextWatermarkFilter('   ', 48, '#ffffff', 'arial', 'center', 1)).toBe('');
+  });
+  it('texto null → string vacío', () => {
+    expect(buildTextWatermarkFilter(null, 48, '#ffffff', 'arial', 'center', 1)).toBe('');
+  });
+  it('texto undefined → string vacío', () => {
+    expect(buildTextWatermarkFilter(undefined, 48, '#ffffff', 'arial', 'center', 1)).toBe('');
+  });
+
+  // ── Escapado de texto ─────────────────────────────────────────────────
+  it('texto con dos puntos se escapa', () => {
+    const f = buildTextWatermarkFilter('10:30', 48, '#ffffff', 'arial', 'center', 1);
+    expect(f).toContain("text='10\\:30'");
+  });
+  it('texto con porcentaje se escapa', () => {
+    const f = buildTextWatermarkFilter('50%', 48, '#ffffff', 'arial', 'center', 1);
+    expect(f).toContain("text='50%%'");
+  });
+
+  // ── Integración con filter_complex ────────────────────────────────────
+  it('se puede encadenar con filtro de vídeo existente', () => {
+    const dt = buildTextWatermarkFilter('Mi Logo', 36, '#00ff00', 'courier', 'top-right', 0.8);
+    const vf = `scale=1920:-2,${dt}`;
+    expect(vf).toContain('scale=1920:-2,drawtext=');
+    expect(vf).toContain("text='Mi Logo'");
+    expect(vf).toContain("font='Courier'");
   });
 });

@@ -6,7 +6,7 @@
   <title>VideoMovMp4 — Conversor MOV → MP4</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat+Alternates:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css">
   <link rel="stylesheet" href="/src/css/app.css">
@@ -174,25 +174,99 @@
                 </button>
               </div>
             </div>
-            <div class="settings__watermark-controls">
-              <div class="settings__watermark-field">
-                <label class="settings__watermark-label" for="watermarkPosition">Posición</label>
-                <select id="watermarkPosition" class="settings__select">
-                  <option value="top-left">Arriba izquierda</option>
-                  <option value="top-right">Arriba derecha</option>
-                  <option value="bottom-left">Abajo izquierda</option>
-                  <option value="bottom-right" selected>Abajo derecha</option>
-                  <option value="center">Centro</option>
+            <div class="settings__watermark-field">
+              <label class="settings__watermark-label" for="watermarkPosition">Posición</label>
+              <select id="watermarkPosition" class="settings__select">
+                <option value="top-left">Arriba izquierda</option>
+                <option value="top-right">Arriba derecha</option>
+                <option value="bottom-left">Abajo izquierda</option>
+                <option value="bottom-right" selected>Abajo derecha</option>
+                <option value="center">Centro</option>
+                <option value="custom" disabled>Personalizado</option>
+              </select>
+            </div>
+            <div class="settings__watermark-visual" id="watermarkVisual" hidden>
+              <label class="settings__watermark-label">Vista previa</label>
+              <div class="settings__watermark-canvas" id="watermarkCanvas">
+                <canvas id="watermarkFrameCanvas"></canvas>
+                <img id="watermarkDragImg" class="settings__watermark-drag-img" alt="" draggable="false">
+              </div>
+              <p class="settings__hint">Arrastra la marca de agua para posicionarla libremente</p>
+            </div>
+            <div class="settings__watermark-field">
+              <label class="settings__watermark-label">Tamaño: <span id="watermarkSizeValue">20</span>%</label>
+              <div class="settings__slider-wrap">
+                <input type="range" id="watermarkSize" min="5" max="50" value="20" class="settings__slider" aria-label="Tamaño de marca de agua">
+              </div>
+            </div>
+            <div class="settings__watermark-field">
+              <label class="settings__watermark-label">Opacidad: <span id="watermarkOpacityValue">100</span>%</label>
+              <div class="settings__slider-wrap">
+                <input type="range" id="watermarkOpacity" min="10" max="100" value="100" step="5" class="settings__slider" aria-label="Opacidad de marca de agua">
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- Text Watermark -->
+        <fieldset class="settings__group settings__group--textwm">
+          <legend class="settings__label">Marca de agua (texto)</legend>
+          <label class="settings__toggle-wrap">
+            <input type="checkbox" id="textWmCheckbox" class="settings__toggle-input">
+            <span class="settings__toggle-track"></span>
+            <span class="settings__toggle-text">Añadir texto sobre el vídeo</span>
+          </label>
+          <div class="settings__textwm-options" id="textWmOptions" hidden>
+            <div class="settings__textwm-field">
+              <label class="settings__watermark-label" for="textWmInput">Texto</label>
+              <input type="text" id="textWmInput" class="settings__textwm-input" placeholder="Escribe tu texto..." maxlength="100">
+            </div>
+            <div class="settings__textwm-row">
+              <div class="settings__textwm-field">
+                <label class="settings__watermark-label" for="textWmFont">Fuente</label>
+                <select id="textWmFont" class="settings__select">
+                  <option value="montserrat">Montserrat Alternates</option>
+                  <option value="montserrat-bold">Montserrat Alternates Bold</option>
+                  <option value="arial" selected>Arial</option>
+                  <option value="courier">Courier</option>
+                  <option value="times">Times New Roman</option>
                 </select>
               </div>
-              <div class="settings__watermark-field">
-                <label class="settings__watermark-label" for="watermarkSize">Tamaño: <span id="watermarkSizeValue">20</span>%</label>
-                <input type="range" id="watermarkSize" min="5" max="50" value="20" class="settings__slider">
+              <div class="settings__textwm-field">
+                <label class="settings__watermark-label" for="textWmColor">Color</label>
+                <input type="color" id="textWmColor" class="settings__textwm-color" value="#ffffff">
               </div>
-              <div class="settings__watermark-field">
-                <label class="settings__watermark-label" for="watermarkOpacity">Opacidad: <span id="watermarkOpacityValue">100</span>%</label>
-                <input type="range" id="watermarkOpacity" min="10" max="100" value="100" step="5" class="settings__slider">
+            </div>
+            <div class="settings__textwm-field">
+              <label class="settings__watermark-label">Tamaño: <span id="textWmSizeValue">48</span>px</label>
+              <div class="settings__slider-wrap">
+                <input type="range" id="textWmSize" min="12" max="200" value="48" class="settings__slider" aria-label="Tamaño de texto">
               </div>
+            </div>
+            <div class="settings__textwm-field">
+              <label class="settings__watermark-label">Opacidad: <span id="textWmOpacityValue">100</span>%</label>
+              <div class="settings__slider-wrap">
+                <input type="range" id="textWmOpacity" min="10" max="100" value="100" step="5" class="settings__slider" aria-label="Opacidad de texto">
+              </div>
+            </div>
+            <div class="settings__textwm-field">
+              <label class="settings__watermark-label" for="textWmPosition">Posición</label>
+              <select id="textWmPosition" class="settings__select">
+                <option value="top-left">Arriba izquierda</option>
+                <option value="top-right">Arriba derecha</option>
+                <option value="bottom-left">Abajo izquierda</option>
+                <option value="bottom-right" selected>Abajo derecha</option>
+                <option value="center">Centro</option>
+                <option value="custom" disabled>Personalizado</option>
+              </select>
+            </div>
+            <div class="settings__textwm-preview" id="textWmPreview" hidden>
+              <label class="settings__watermark-label">Vista previa</label>
+              <div class="settings__textwm-preview-box" id="textWmPreviewBox">
+                <canvas id="textWmFrameCanvas"></canvas>
+                <span id="textWmPreviewText" class="settings__textwm-overlay"></span>
+              </div>
+              <p class="settings__hint">Arrastra el texto para posicionarlo libremente</p>
             </div>
           </div>
         </fieldset>

@@ -22,7 +22,10 @@
       "Bash(chmod:*)",
       "Bash(bash /Users/imac_mini_javi/Documents/WEB/FRONTEND_TOOLS/VideoMobMp4/e2e/fixtures/generate-fixture.sh 2>&1)",
       "Bash(gh auth:*)",
-      "Bash(gh repo:*)"
+      "Bash(gh repo:*)",
+      "Bash(mkdir -p /Users/imac_mini_javi/Documents/WEB/FRONTEND_TOOLS/VideoMovMp4/src/fonts)",
+      "Bash(curl -L -o /Users/imac_mini_javi/Documents/WEB/FRONTEND_TOOLS/VideoMovMp4/src/fonts/MontserratAlternates-Regular.ttf \"https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/MontserratAlternates-Regular.ttf\")",
+      "Bash(curl -L -o /Users/imac_mini_javi/Documents/WEB/FRONTEND_TOOLS/VideoMovMp4/src/fonts/MontserratAlternates-Bold.ttf \"https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/MontserratAlternates-Bold.ttf\")"
     ]
   }
 }

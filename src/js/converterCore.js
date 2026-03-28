@@ -324,8 +324,20 @@ export const WATERMARK_SIZES = {
   30:  { label: '30%' },
 };
 
+export function parseWatermarkPosition(position) {
+  if (typeof position === 'string' && position.startsWith('custom:')) {
+    const parts = position.split(':');
+    const x = parseInt(parts[1]);
+    const y = parseInt(parts[2]);
+    if (Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0) {
+      return { x: String(x), y: String(y) };
+    }
+  }
+  return WATERMARK_POSITIONS[position] || WATERMARK_POSITIONS['bottom-right'];
+}
+
 export function buildWatermarkFilter(position, sizePct, opacity) {
-  const pos = WATERMARK_POSITIONS[position] || WATERMARK_POSITIONS['bottom-right'];
+  const pos = parseWatermarkPosition(position);
   const parsedSize = parseInt(sizePct);
   const pct = Math.max(5, Math.min(50, Number.isFinite(parsedSize) ? parsedSize : 20));
 
@@ -340,4 +352,50 @@ export function buildWatermarkFilter(position, sizePct, opacity) {
   const overlayFilter = `[0:v][wm]overlay=${pos.x}:${pos.y}`;
 
   return { scaleFilter, overlayFilter };
+}
+
+// ─── Text Watermark ─────────────────────────────────────────────────────────
+
+export const WATERMARK_FONTS = {
+  'montserrat':      { label: 'Montserrat Alternates', file: 'MontserratAlternates-Regular.ttf', css: "'Montserrat Alternates', sans-serif" },
+  'montserrat-bold': { label: 'Montserrat Alternates Bold', file: 'MontserratAlternates-Bold.ttf', css: "'Montserrat Alternates', sans-serif" },
+  'arial':           { label: 'Arial', file: null, css: 'Arial, sans-serif' },
+  'courier':         { label: 'Courier', file: null, css: "'Courier New', Courier, monospace" },
+  'times':           { label: 'Times New Roman', file: null, css: "'Times New Roman', Times, serif" },
+};
+
+export function escapeDrawtext(text) {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    .replace(/\\/g, '\\\\\\\\')
+    .replace(/'/g, "\u2019")
+    .replace(/:/g, '\\:')
+    .replace(/%/g, '%%');
+}
+
+export function buildTextWatermarkFilter(text, fontSize, fontColor, fontFamily, position, opacity) {
+  if (!text || typeof text !== 'string' || !text.trim()) return '';
+
+  const pos = parseWatermarkPosition(position);
+
+  const parsedSize = parseInt(fontSize);
+  const size = Math.max(12, Math.min(200, Number.isFinite(parsedSize) ? parsedSize : 48));
+
+  const color = (typeof fontColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(fontColor))
+    ? fontColor
+    : '#ffffff';
+
+  const parsedOpacity = parseFloat(opacity);
+  const alpha = Math.max(0.1, Math.min(1, Number.isFinite(parsedOpacity) ? parsedOpacity : 1));
+  const alphaHex = Math.round(alpha * 255).toString(16).padStart(2, '0');
+  const fullColor = `${color}@0x${alphaHex}`;
+
+  const font = WATERMARK_FONTS[fontFamily] || WATERMARK_FONTS['arial'];
+  const fontParam = font.file
+    ? `fontfile=FONTDIR/${font.file}`
+    : `font='${font.label}'`;
+
+  const escaped = escapeDrawtext(text.trim());
+
+  return `drawtext=${fontParam}:text='${escaped}':fontsize=${size}:fontcolor=${fullColor}:x=${pos.x}:y=${pos.y}`;
 }

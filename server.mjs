@@ -17,6 +17,7 @@ import {
   formatFileSize,
   buildPlatformArgs,
   buildWatermarkFilter,
+  buildTextWatermarkFilter,
 } from './src/js/converterCore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -116,7 +117,7 @@ function checkRateLimit(ip) {
 // ─── Jobs system ─────────────────────────────────────────────────────────────
 const jobs = new Map();
 
-function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat, mirror, watermarkPath, watermarkPosition, watermarkSize, watermarkOpacity) {
+function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat, mirror, watermarkPath, watermarkPosition, watermarkSize, watermarkOpacity, textWm) {
   const id = uuidv4();
   const outputPath = path.join(CONVERTED_DIR, `${id}.mp4`);
   const job = {
@@ -136,6 +137,7 @@ function createJob(inputPath, originalFilename, sanitized, quality, resolution, 
     watermarkPosition: watermarkPosition || 'bottom-right',
     watermarkSize: parseInt(watermarkSize) || 20,
     watermarkOpacity: parseFloat(watermarkOpacity) || 1,
+    textWm: textWm || null,
     metadata: null,
     progress: { percent: 0, fps: 0, speed: '', elapsed: 0, eta: 0 },
     ffmpegProcess: null,
@@ -306,6 +308,32 @@ function startConversion(job) {
     args.splice(progIdx, 0, '-filter_complex', filterComplex, '-map', '[v]', '-map', '0:a?');
 
     log('INFO', `Marca de agua: pos=${job.watermarkPosition}, tamaño=${job.watermarkSize}%`, job.id);
+  }
+
+  // Inject text watermark (drawtext filter)
+  if (job.textWm) {
+    const fontsDir = path.join(ROOT_DIR, 'src', 'fonts');
+    let dtFilter = buildTextWatermarkFilter(
+      job.textWm.text, job.textWm.size, job.textWm.color,
+      job.textWm.font, job.textWm.position, job.textWm.opacity,
+    );
+    // Replace FONTDIR placeholder with actual path
+    dtFilter = dtFilter.replace('FONTDIR/', fontsDir + '/');
+
+    const fcIdx = args.indexOf('-filter_complex');
+    if (fcIdx !== -1) {
+      // Append drawtext to the end of filter_complex, before output label [v]
+      args[fcIdx + 1] = args[fcIdx + 1].replace(/\[v\]$/, `[v2];[v2]${dtFilter}[v]`);
+    } else {
+      const vfIdx = args.indexOf('-vf');
+      if (vfIdx !== -1) {
+        args[vfIdx + 1] += `,${dtFilter}`;
+      } else {
+        const progIdx = args.indexOf('-progress');
+        args.splice(progIdx, 0, '-vf', dtFilter);
+      }
+    }
+    log('INFO', `Texto marca de agua: "${job.textWm.text}"`, job.id);
   }
 
   const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -635,9 +663,22 @@ export const server = http.createServer(async (req, res) => {
         fields.igFormat || 'reels',
         fields.mirror || '0',
         watermarkPath,
-        fields.watermarkPosition || 'bottom-right',
+        (() => {
+          const wp = fields.watermarkPosition || 'bottom-right';
+          const validPresets = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'];
+          if (validPresets.includes(wp) || /^custom:\d+:\d+$/.test(wp)) return wp;
+          return 'bottom-right';
+        })(),
         fields.watermarkSize || '20',
         fields.watermarkOpacity || '1',
+        fields.textWm ? {
+          text: fields.textWm,
+          font: fields.textWmFont || 'arial',
+          size: fields.textWmSize || '48',
+          color: fields.textWmColor || '#ffffff',
+          opacity: fields.textWmOpacity || '1',
+          position: fields.textWmPosition || 'bottom-right',
+        } : null,
       );
       // Override the job id to match the one used for the file
       jobs.delete(job.id);

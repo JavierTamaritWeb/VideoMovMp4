@@ -21,9 +21,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | File | Role |
 |------|------|
 | `server.mjs` | HTTP server (native `node:http`), API endpoints, job lifecycle, FFmpeg orchestration, static file serving, live-reload SSE |
-| `src/js/converterCore.js` | Pure functions (no DOM/Node deps): validation, CRF mapping, format helpers, filename sanitization, ffprobe parsing, platform presets, video filter chain building, watermark filter building |
+| `src/js/converterCore.js` | Pure functions (no DOM/Node deps): validation, CRF mapping, format helpers, filename sanitization, ffprobe parsing, platform presets, video filter chain building, image watermark filter, text watermark filter (drawtext) |
+| `src/fonts/` | Montserrat Alternates Regular + Bold TTF (for FFmpeg drawtext) |
 | `src/js/app.js` | Browser UI controller: state machine (idle → configuring → converting → done/error), SSE client, drag-and-drop, download |
-| `public/index.html` | Single HTML page with CDN deps (Font Awesome, Notyf, Inter font) |
+| `public/index.html` | Single HTML page with CDN deps (Font Awesome, Notyf, Inter, Montserrat Alternates) |
 | `src/css/app.css` | Dark theme, BEM naming, mobile-first responsive |
 
 ### Key patterns
@@ -37,10 +38,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Graceful shutdown:** SIGTERM/SIGINT kill active FFmpeg processes, close SSE clients, clean temp files.
 - **Platform presets:** `PLATFORM_PRESETS` in `converterCore.js` defines per-platform FFmpeg settings (web, tiktok, instagram, youtube). `buildPlatformArgs()` returns the full FFmpeg args array; `buildVideoFilterChain()` handles aspect ratio crop + scale. When a platform is selected, resolution/encoding-preset controls are hidden and the preset drives those values.
 - **Mirror (hflip):** Toggle in the settings panel. The `hflip` filter is injected into the `-vf` chain in `server.mjs` after args are built (works with both custom and platform paths).
-- **Watermark:** Image overlay with configurable position (5 positions), size (5-50% of video width), and opacity (10-100%). Uses `-filter_complex` with `overlay` when enabled. Opacity < 100% applies `format=rgba,colorchannelmixer=aa={value}` to the watermark stream. `WATERMARK_POSITIONS` and `buildWatermarkFilter(position, size, opacity)` in `converterCore.js`. Image uploaded as second file in multipart form. Placeholder SVG (`src/img/image.svg`) shown when no image selected.
+- **Image watermark:** Image overlay with configurable position (5 presets + custom drag), size (5-50%), and opacity (10-100%). Uses `-filter_complex` with `overlay`. Drag-to-position on a visual canvas preview; custom coords sent as `custom:X:Y`. `parseWatermarkPosition()` handles both presets and custom pixel coords. Placeholder SVG (`src/img/image.svg`) shown when no image selected.
+- **Text watermark:** Text overlay via FFmpeg `drawtext` filter. Configurable text, font (Montserrat Alternates regular/bold, Arial, Courier, Times), size (12-200px), color (hex picker), opacity (10-100%), position (5 presets + custom drag). `WATERMARK_FONTS`, `escapeDrawtext()`, `buildTextWatermarkFilter()` in `converterCore.js`. Font files for Montserrat in `src/fonts/`; system fonts via `font=` param.
+- **Mirror synced to previews:** Toggling mirror (hflip) updates both watermark canvas previews in real-time using `ctx.translate + ctx.scale(-1,1)`.
 
 ## Endpoints
-- `POST /api/convert` — Upload MOV + start conversion job (fields: video, quality, resolution, preset, platform, igFormat, mirror, watermark, watermarkPosition, watermarkSize, watermarkOpacity)
+- `POST /api/convert` — Upload MOV + start conversion job (fields: video, quality, resolution, preset, platform, igFormat, mirror, watermark, watermarkPosition, watermarkSize, watermarkOpacity, textWm, textWmFont, textWmSize, textWmColor, textWmOpacity, textWmPosition)
 - `GET /api/jobs/:id` — SSE stream with progress events (metadata → progress → done/error)
 - `POST /api/jobs/:id/cancel` — Cancel conversion (sends SIGTERM to FFmpeg)
 - `GET /api/jobs/:id/download` — Download converted MP4
@@ -54,7 +57,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - **Custom:** libx264, user-selected CRF/resolution/preset (legacy path)
    - **Platform:** `buildPlatformArgs()` sets codec, profile, level, bitrate cap, aspect ratio crop, fps cap per platform
    - If mirror enabled: `hflip` filter appended to `-vf` chain
-   - If watermark enabled: switches from `-vf` to `-filter_complex` with `[0:v]{filters}[main]; [1:v]scale[wm]; [main][wm]overlay[v]`
+   - If image watermark enabled: switches from `-vf` to `-filter_complex` with `[0:v]{filters}[main]; [1:v]scale[wm]; [main][wm]overlay[v]`
+   - If text watermark enabled: appends `drawtext=fontfile=...:text=...:fontsize=...:fontcolor=...` to `-vf` or `-filter_complex`
 4. Stream progress via SSE → download available on completion
 
 ## Testing
