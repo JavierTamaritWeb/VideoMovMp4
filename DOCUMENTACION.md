@@ -1373,8 +1373,9 @@ import {
 
 ```
 idle → configuring → converting → done
-                  ↘               ↗
-                    ←── error ──←
+            ↑     ↘               ↗  │
+            │       ←── error ──←    │
+            └────────── Atrás ───────┘
 ```
 
 La funcion `setState(state)` (lineas 67-95) controla la visibilidad de los paneles:
@@ -1787,11 +1788,12 @@ Descripcion paso a paso de una conversion exitosa:
     - Si la pestaña no esta activa → notificacion del sistema
     - Elimina jobId de sessionStorage
       ↓
-16. USUARIO pulsa "Descargar MP4" (o Ctrl+S):
-    a. Si showSaveFilePicker disponible → dialogo nativo de guardado
-    b. Si no → descarga directa con <a download>
+16. USUARIO tiene 3 opciones:
+    a. "Descargar MP4" (o Ctrl+S) → descarga el archivo convertido
+    b. "Atrás" → vuelve al panel de opciones con todos los ajustes intactos para reconvertir
+    c. "Convertir otro vídeo" → reinicia al estado inicial
       ↓
-17. SERVIDOR sirve el MP4 via GET /api/jobs/{id}/download:
+17. Si descarga: SERVIDOR sirve el MP4 via GET /api/jobs/{id}/download:
     - Content-Type: video/mp4
     - Content-Disposition: attachment; filename="Mi_Video_convertido.mp4"
     - Stream del archivo

@@ -175,6 +175,7 @@ JOB_TTL_MIN=10            # Minutos que un job completado permanece disponible
 - Al completar, se muestra la preview del video convertido
 - Comparativa de tamaños: original vs convertido con porcentaje de ahorro
 - Pulsa "Descargar MP4" o `Ctrl+S`
+- "Atrás" vuelve al panel de opciones con todos los ajustes intactos para reconvertir con otros parametros
 - "Convertir otro video" reinicia al estado inicial
 
 ---

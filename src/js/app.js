@@ -35,6 +35,7 @@ const btnConvert = $('#btnConvert');
 const btnCancel = $('#btnCancel');
 const btnDownload = $('#btnDownload');
 const btnAnother = $('#btnAnother');
+const btnBack = $('#btnBack');
 const btnRetry = $('#btnRetry');
 const btnReset = $('#btnReset');
 const fileInfo = $('#fileInfo');
@@ -836,6 +837,12 @@ function resetAll() {
 }
 
 btnAnother.addEventListener('click', resetAll);
+btnBack.addEventListener('click', () => {
+  if (currentFile) {
+    setState('configuring');
+    updateWmPreview();
+  }
+});
 btnRetry.addEventListener('click', () => {
   if (currentFile) {
     setState('configuring');
