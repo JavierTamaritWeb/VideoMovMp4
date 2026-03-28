@@ -62,6 +62,7 @@ VideoMovMp4 es una aplicacion web de una sola pagina (SPA) que convierte archivo
 - Seleccion de preset de velocidad (ultrafast, fast, medium, slow)
 - Presets por plataforma: Web, TikTok (9:16), Instagram (Reels 9:16 / Feed 1:1), YouTube (H.264 High) con ajustes automaticos de resolucion, aspect ratio, fps, bitrate y perfil H.264
 - Espejo horizontal (filtro `hflip` de FFmpeg)
+- Marca de agua configurable: imagen superpuesta con posicion (5 opciones) y tamaño (5-50% del ancho del video) usando `-filter_complex` con `overlay`
 - Cancelacion de conversiones en curso
 - Recuperacion automatica de sesion tras refresh del navegador
 - Reconexion SSE automatica con backoff exponencial
@@ -188,11 +189,13 @@ VideoMobMp4/
 │   │   └── app.css                # Dark theme, BEM, responsive
 │   └── js/
 │       ├── app.js                 # Logica UI: upload, SSE, estados, descarga
-│       └── converterCore.js       # Funciones puras sin dependencias + presets plataforma
+│       └── converterCore.js       # Funciones puras sin dependencias + presets + watermark
+│   └── img/
+│       └── image.svg             # Placeholder SVG para marca de agua
 │
 ├── tests/
 │   └── unit/
-│       ├── converterCore.test.js  # 73 tests de funciones puras + presets
+│       ├── converterCore.test.js  # 116 tests de funciones puras, presets y watermark
 │       └── server.test.js         # 7 tests de integracion de la API
 │
 ├── e2e/
@@ -401,6 +404,9 @@ Esto previene ataques como `/../../../etc/passwd` o `/%2e%2e%2f%2e%2e%2fetc%2fpa
   - `platform` (string, opcional): "custom"|"web"|"tiktok"|"instagram"|"youtube", default "custom"
   - `igFormat` (string, opcional): "reels"|"feed", default "reels" (solo aplica si platform="instagram")
   - `mirror` (string, opcional): "0"|"1", default "0" (espejo horizontal)
+  - `watermark` (file, opcional): imagen para marca de agua (PNG, JPG, WebP, SVG)
+  - `watermarkPosition` (string, opcional): "top-left"|"top-right"|"bottom-left"|"bottom-right"|"center", default "bottom-right"
+  - `watermarkSize` (string, opcional): porcentaje del ancho del video (5-50), default "20"
 
 **Validaciones en orden:**
 1. Rate limiting por IP (5 req/min) → 429 si excedido
@@ -602,6 +608,9 @@ Cada conversion se gestiona como un "job" almacenado en un `Map` en memoria.
   platform: "custom",          // "custom"|"web"|"tiktok"|"instagram"|"youtube"
   igFormat: "reels",           // "reels"|"feed" (solo para Instagram)
   mirror: false,               // true = aplicar espejo horizontal (hflip)
+  watermarkPath: null,         // Ruta al archivo de imagen (null si no hay)
+  watermarkPosition: "bottom-right",  // Posición de la marca de agua
+  watermarkSize: 20,           // Porcentaje del ancho del video (5-50)
   metadata: {                  // De ffprobe (null hasta que complete)
     duration: 10.5,
     width: 1920,
@@ -719,6 +728,27 @@ ffmpeg -i input.mov \
 
 Si `mirror=true`, el filtro `hflip` se inyecta en la cadena `-vf` (en ambos paths).
 
+**Con marca de agua** (si `watermarkPath` presente):
+
+Cuando hay marca de agua, se usa `-filter_complex` en lugar de `-vf` para manejar dos inputs:
+
+```bash
+ffmpeg -i input.mov -i logo.png \
+  -filter_complex "[0:v]{filtros previos}[main];[1:v]scale=iw*20/100:-1[wm];[main][wm]overlay=W-w-10:H-h-10[v]" \
+  -map "[v]" -map 0:a? \
+  -c:v libx264 -crf 21 ... -y output.mp4
+```
+
+La cadena `-vf` existente (scale, crop, hflip) se integra como primer paso del grafo `filter_complex`. Las posiciones disponibles son:
+
+| Posicion | Coordenadas overlay |
+|----------|-------------------|
+| Arriba izquierda | `10:10` |
+| Arriba derecha | `W-w-10:10` |
+| Abajo izquierda | `10:H-h-10` |
+| Abajo derecha | `W-w-10:H-h-10` |
+| Centro | `(W-w)/2:(H-h)/2` |
+
 **Flags explicados:**
 
 | Flag | Valor | Proposito |
@@ -787,13 +817,14 @@ Y emite un evento SSE `{ type: "progress" }` con los datos actualizados.
 
 ### 6.7 Parser multipart
 
-El servidor incluye un parser multipart propio (lineas 354-426) en lugar de usar `multer`. Este parser:
+El servidor incluye un parser multipart propio en lugar de usar `multer`. Este parser:
 
 1. Extrae el boundary del header `Content-Type`
 2. Acumula chunks del body verificando que no excedan `MAX_FILE_SIZE`
 3. Divide el buffer por boundaries
 4. Para cada parte, separa headers del body por `\r\n\r\n`
 5. Identifica campos de formulario (por `name="..."`) y archivos (por `filename="..."`)
+6. Retorna `{ fields, files, fileData, fileFilename }` — `files` es un objeto keyed por nombre de campo (soporta multiples archivos: `video` + `watermark`)
 
 Si el tamaño total excede `MAX_FILE_SIZE`, destruye la conexion y devuelve error `FILE_TOO_LARGE`.
 
@@ -1076,6 +1107,47 @@ El preset `custom` tiene todos los overrides a `null` (modo manual).
 - `-maxrate {kbps}k -bufsize {2x}k` (si el preset tiene bitrate cap)
 - `-c:a aac -b:a {audioBitrate}k`
 
+### 7.15 `WATERMARK_POSITIONS`
+
+**Tipo:** objeto exportado (constante).
+
+Define las 5 posiciones disponibles para la marca de agua:
+
+| Clave | Label | Coordenada X | Coordenada Y |
+|-------|-------|:------------:|:------------:|
+| `top-left` | Arriba izquierda | `10` | `10` |
+| `top-right` | Arriba derecha | `W-w-10` | `10` |
+| `bottom-left` | Abajo izquierda | `10` | `H-h-10` |
+| `bottom-right` | Abajo derecha | `W-w-10` | `H-h-10` |
+| `center` | Centro | `(W-w)/2` | `(H-h)/2` |
+
+Las coordenadas usan expresiones FFmpeg: `W` = ancho del video, `H` = alto del video, `w` = ancho de la marca, `h` = alto de la marca.
+
+### 7.16 `WATERMARK_SIZES`
+
+**Tipo:** objeto exportado (constante).
+
+Define los tamaños predefinidos para la marca de agua (porcentaje del ancho del video): 10%, 15%, 20%, 25%, 30%. El slider de la UI permite valores de 5 a 50.
+
+### 7.17 `buildWatermarkFilter(position, sizePct)`
+
+**Proposito:** generar los dos fragmentos de filtro FFmpeg necesarios para aplicar la marca de agua.
+
+| Parametro | Tipo | Descripcion |
+|-----------|------|-------------|
+| `position` | string | Clave de `WATERMARK_POSITIONS` (fallback a `"bottom-right"`) |
+| `sizePct` | number\|string | Porcentaje del ancho del video (clamped 5-50, default 20) |
+| **Retorno** | `{ scaleFilter: string, overlayFilter: string }` | Fragmentos para `-filter_complex` |
+
+**Retorno:**
+- `scaleFilter`: `"[1:v]scale=iw*{pct}/100:-1[wm]"` — escala la imagen de marca de agua relativa al ancho del video principal, manteniendo aspect ratio (`-1`)
+- `overlayFilter`: `"[0:v][wm]overlay={x}:{y}"` — superpone la marca de agua en la posicion indicada
+
+**Manejo de entradas invalidas:**
+- Posicion desconocida/null/undefined → fallback a `bottom-right`
+- Tamaño no numerico/NaN/undefined/null → default 20
+- Tamaño fuera de rango → clamped a 5 (min) o 50 (max)
+
 ---
 
 ## 8. Frontend — interfaz de usuario
@@ -1098,7 +1170,7 @@ Archivo de 237 lineas. SPA (Single Page Application) con estructura semantica HT
 | ID | Seccion | Visible cuando |
 |----|---------|---------------|
 | `panelUpload` | Zona de subida (drag & drop + file info) | `idle`, `configuring` |
-| `panelSettings` | Opciones de conversion (plataforma, calidad, espejo, resolucion, preset) | `configuring` |
+| `panelSettings` | Opciones de conversion (plataforma, calidad, espejo, marca de agua, resolucion, preset) | `configuring` |
 | `panelProgress` | Barra de progreso + stats en tiempo real | `converting` |
 | `panelResult` | Preview + comparativa + descarga | `done` |
 | `panelError` | Mensaje de error + boton reintentar | `error` |
@@ -1187,6 +1259,7 @@ import {
 | `sseRetries` | number | Contador de reintentos SSE |
 | `uiState` | string | Estado actual de la UI |
 | `selectedPlatform` | string | Plataforma seleccionada (`"custom"`, `"web"`, `"tiktok"`, `"instagram"`, `"youtube"`) |
+| `watermarkFile` | File\|null | Archivo de imagen para marca de agua |
 
 ### 8.4 Maquina de estados de la UI
 
@@ -1375,7 +1448,7 @@ npm run test:watch    # Modo watch (vitest)
 
 ### 10.2 Tests de funciones puras (converterCore.test.js)
 
-Archivo: `tests/unit/converterCore.test.js` — 73 tests.
+Archivo: `tests/unit/converterCore.test.js` — 116 tests.
 
 | Grupo `describe` | Tests | Que verifica |
 |-------------------|-------|-------------|
@@ -1393,6 +1466,9 @@ Archivo: `tests/unit/converterCore.test.js` — 73 tests.
 | `getPlatformPreset` | 2 | Lookup correcto, fallback a custom |
 | `buildVideoFilterChain` | 9 | Crop 9:16 desde landscape, sin filtro para vertical nativo, no upscale, crop 1:1 Instagram Feed, scale Web 4K, sin filtro para dimensiones que encajan |
 | `buildPlatformArgs` | 8 | Null para custom, profile/level por plataforma, fps cap, maxrate, YouTube bf/audio, calidad variable, codecs presentes |
+| `WATERMARK_POSITIONS` | 7 | 5 posiciones presentes, propiedades label/x/y, coordenadas exactas por posicion |
+| `WATERMARK_SIZES` | 2 | 5 tamaños de 10 a 30, labels con formato `N%` |
+| `buildWatermarkFilter` | 32 | Estructura de retorno, formato scaleFilter/overlayFilter, cada posicion genera coordenadas correctas, tamaños predefinidos e intermedios, clamping min/max, entradas invalidas (null/undefined/NaN/string), posicion desconocida, combinaciones posicion+tamaño, formato FFmpeg sin espacios, ensamblaje filter_complex con filtros previos |
 
 **Helper de test:**
 ```javascript
@@ -1522,6 +1598,7 @@ Descripcion paso a paso de una conversion exitosa:
 4. USUARIO selecciona plataforma (ej. TikTok) o "Personalizado"
    - Si plataforma seleccionada: controles de resolucion/preset se ocultan
    - Ajusta calidad (75), opcionalmente activa espejo horizontal
+   - Opcionalmente activa marca de agua: selecciona imagen, posicion y tamaño
      ↓
 5. USUARIO pulsa "Convertir a MP4" (o Ctrl+Enter)
      ↓
@@ -1532,6 +1609,9 @@ Descripcion paso a paso de una conversion exitosa:
    - preset: "medium" (solo en modo Personalizado)
    - platform: "tiktok"
    - mirror: "0"
+   - watermark: imagen (si activada)
+   - watermarkPosition: "bottom-right"
+   - watermarkSize: "20"
      ↓
 7. SERVIDOR (server.mjs) recibe la peticion:
    a. Rate limit: ¿< 5 req/min para esta IP? → Si
@@ -1560,6 +1640,7 @@ Descripcion paso a paso de una conversion exitosa:
            -maxrate 2500k -bufsize 5000k -c:a aac -b:a 128k
            -movflags +faststart -pix_fmt yuv420p -progress pipe:1 -y output.mp4
     # Si mirror activado, se añade hflip a la cadena -vf
+    # Si watermark activado, se usa -filter_complex con overlay en lugar de -vf
       ↓
 12. SERVIDOR parsea progreso de stdout (cada bloque "progress=continue"):
     - Calcula percent, fps, speed, elapsed, eta

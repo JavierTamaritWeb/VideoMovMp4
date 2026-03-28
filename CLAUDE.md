@@ -21,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | File | Role |
 |------|------|
 | `server.mjs` | HTTP server (native `node:http`), API endpoints, job lifecycle, FFmpeg orchestration, static file serving, live-reload SSE |
-| `src/js/converterCore.js` | Pure functions (no DOM/Node deps): validation, CRF mapping, format helpers, filename sanitization, ffprobe parsing, platform presets, video filter chain building |
+| `src/js/converterCore.js` | Pure functions (no DOM/Node deps): validation, CRF mapping, format helpers, filename sanitization, ffprobe parsing, platform presets, video filter chain building, watermark filter building |
 | `src/js/app.js` | Browser UI controller: state machine (idle → configuring → converting → done/error), SSE client, drag-and-drop, download |
 | `public/index.html` | Single HTML page with CDN deps (Font Awesome, Notyf, Inter font) |
 | `src/css/app.css` | Dark theme, BEM naming, mobile-first responsive |
@@ -33,13 +33,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Real-time progress:** Server pushes FFmpeg progress via SSE (`/api/jobs/:id`). Client reconnects with exponential backoff (max 5 retries).
 - **File validation:** Two-step — extension check (`.mov`) then magic bytes (`ftyp` header + valid subtype like `qt`, `isom`, `mp42`).
 - **Concurrency:** Rate limiter (5 req/min per IP) + max concurrent jobs (default 2). Configurable via env vars.
-- **Multipart parsing:** Custom implementation in `server.mjs` (no multer at runtime despite being a dependency).
+- **Multipart parsing:** Custom implementation in `server.mjs` supporting multiple files keyed by field name (video + watermark). Returns `{ fields, files, fileData, fileFilename }`.
 - **Graceful shutdown:** SIGTERM/SIGINT kill active FFmpeg processes, close SSE clients, clean temp files.
 - **Platform presets:** `PLATFORM_PRESETS` in `converterCore.js` defines per-platform FFmpeg settings (web, tiktok, instagram, youtube). `buildPlatformArgs()` returns the full FFmpeg args array; `buildVideoFilterChain()` handles aspect ratio crop + scale. When a platform is selected, resolution/encoding-preset controls are hidden and the preset drives those values.
 - **Mirror (hflip):** Toggle in the settings panel. The `hflip` filter is injected into the `-vf` chain in `server.mjs` after args are built (works with both custom and platform paths).
+- **Watermark:** Image overlay with configurable position (5 positions) and size (5-50% of video width). Uses `-filter_complex` with `overlay` when enabled. `WATERMARK_POSITIONS` and `buildWatermarkFilter()` in `converterCore.js`. Image uploaded as second file in multipart form. Placeholder SVG (`src/img/image.svg`) shown when no image selected.
 
 ## Endpoints
-- `POST /api/convert` — Upload MOV + start conversion job (fields: video, quality, resolution, preset, platform, igFormat, mirror)
+- `POST /api/convert` — Upload MOV + start conversion job (fields: video, quality, resolution, preset, platform, igFormat, mirror, watermark, watermarkPosition, watermarkSize)
 - `GET /api/jobs/:id` — SSE stream with progress events (metadata → progress → done/error)
 - `POST /api/jobs/:id/cancel` — Cancel conversion (sends SIGTERM to FFmpeg)
 - `GET /api/jobs/:id/download` — Download converted MP4
@@ -53,6 +54,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - **Custom:** libx264, user-selected CRF/resolution/preset (legacy path)
    - **Platform:** `buildPlatformArgs()` sets codec, profile, level, bitrate cap, aspect ratio crop, fps cap per platform
    - If mirror enabled: `hflip` filter appended to `-vf` chain
+   - If watermark enabled: switches from `-vf` to `-filter_complex` with `[0:v]{filters}[main]; [1:v]scale[wm]; [main][wm]overlay[v]`
 4. Stream progress via SSE → download available on completion
 
 ## Testing
