@@ -23,7 +23,7 @@ done
 
 echo ""
 echo "  ╔══════════════════════════════════════╗"
-echo "  ║  VideoMovMp4 v1.0.0                   ║"
+echo "  ║  VideoMovMp4 v1.1.2                   ║"
 echo "  ║  http://localhost:$PORT_TO_USE              ║"
 echo "  ╚══════════════════════════════════════╝"
 echo ""

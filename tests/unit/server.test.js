@@ -48,7 +48,7 @@ describe('Server API', () => {
     expect(res.status).toBe(200);
     expect(res.json.status).toBe('ok');
     expect(res.json.ffmpeg).toBe(true);
-    expect(res.json.version).toBe('1.0.0');
+    expect(res.json.version).toBe('1.1.2');
   });
 
   it('POST /api/convert sin archivo → 400', async () => {

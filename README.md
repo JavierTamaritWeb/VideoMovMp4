@@ -218,7 +218,7 @@ curl http://localhost:5173/api/health
   "uptime": 120,
   "activeJobs": 0,
   "totalJobs": 3,
-  "version": "1.0.0"
+  "version": "1.1.2"
 }
 ```
 

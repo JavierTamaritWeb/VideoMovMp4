@@ -569,7 +569,7 @@ export const server = http.createServer(async (req, res) => {
         uptime,
         activeJobs: getActiveJobCount(),
         totalJobs: jobs.size,
-        version: '1.0.0',
+        version: '1.1.2',
       });
       return;
     }

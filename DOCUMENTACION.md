@@ -1,4 +1,4 @@
-# VideoMovMp4 v1.0.0 — Documentacion tecnica completa
+# VideoMovMp4 v1.1.2 — Documentacion tecnica completa
 
 ---
 
@@ -573,7 +573,7 @@ El nombre del archivo descargado se construye como: nombre original sin `.mov` +
   "uptime": 12345,
   "activeJobs": 1,
   "totalJobs": 5,
-  "version": "1.0.0"
+  "version": "1.1.2"
 }
 ```
 
