@@ -18,6 +18,7 @@ import {
   buildPlatformArgs,
   buildWatermarkFilter,
   buildTextWatermarkFilter,
+  buildTrimArgs,
 } from './src/js/converterCore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -117,7 +118,7 @@ function checkRateLimit(ip) {
 // ─── Jobs system ─────────────────────────────────────────────────────────────
 const jobs = new Map();
 
-function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat, mirror, watermarkPath, watermarkPosition, watermarkSize, watermarkOpacity, textWm) {
+function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat, mirror, watermarkPath, watermarkPosition, watermarkSize, watermarkOpacity, textWm, trimStart, trimEnd, trimDuration) {
   const id = uuidv4();
   const outputPath = path.join(CONVERTED_DIR, `${id}.mp4`);
   const job = {
@@ -138,6 +139,9 @@ function createJob(inputPath, originalFilename, sanitized, quality, resolution, 
     watermarkSize: parseInt(watermarkSize) || 20,
     watermarkOpacity: parseFloat(watermarkOpacity) || 1,
     textWm: textWm || null,
+    trimStart: trimStart || null,
+    trimEnd: trimEnd || null,
+    trimDuration: trimDuration || null,
     metadata: null,
     progress: { percent: 0, fps: 0, speed: '', elapsed: 0, eta: 0 },
     ffmpegProcess: null,
@@ -237,8 +241,14 @@ function startConversion(job) {
       )
     : null;
 
+  // Trim args (input seeking — before -i for speed)
+  const trimArgs = (job.trimStart && job.trimEnd && job.trimDuration)
+    ? buildTrimArgs(job.trimStart, job.trimEnd, job.trimDuration)
+    : [];
+
   if (platformArgs) {
     args = [
+      ...trimArgs,
       '-i', job.inputPath,
       ...platformArgs,
       '-movflags', '+faststart',
@@ -254,6 +264,7 @@ function startConversion(job) {
       ? buildResolutionArgs(job.resolution, job.metadata.width, job.metadata.height)
       : [];
     args = [
+      ...trimArgs,
       '-i', job.inputPath,
       '-c:v', 'libx264',
       '-crf', String(crf),
@@ -340,7 +351,11 @@ function startConversion(job) {
   job.ffmpegProcess = proc;
   job.state = 'converting';
 
-  const totalDurationUs = (job.metadata?.duration || 0) * 1_000_000;
+  // Use trim duration if trimming, otherwise full video duration
+  const effectiveDuration = (trimArgs.length > 0 && job.trimStart && job.trimEnd)
+    ? Math.max(0, parseFloat(job.trimEnd) - parseFloat(job.trimStart))
+    : (job.metadata?.duration || 0);
+  const totalDurationUs = effectiveDuration * 1_000_000;
   const startTime = Date.now();
   let progressData = {};
 
@@ -679,6 +694,9 @@ export const server = http.createServer(async (req, res) => {
           opacity: fields.textWmOpacity || '1',
           position: fields.textWmPosition || 'bottom-right',
         } : null,
+        fields.trimStart || null,
+        fields.trimEnd || null,
+        fields.trimDuration || null,
       );
       // Override the job id to match the one used for the file
       jobs.delete(job.id);

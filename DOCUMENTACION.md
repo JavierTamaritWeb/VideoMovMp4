@@ -61,6 +61,7 @@ VideoMovMp4 es una aplicacion web de una sola pagina (SPA) que convierte archivo
 - Seleccion de resolucion (Original, 1080p, 720p, 480p) con proteccion contra ampliacion
 - Seleccion de preset de velocidad (ultrafast, fast, medium, slow)
 - Presets por plataforma: Web, TikTok (9:16), Instagram (Reels, Story, Feed 1:1/4:5/16:9), WhatsApp (960×540, baseline), YouTube (H.264 High) con ajustes automaticos de resolucion, aspect ratio, fps, bitrate y perfil H.264
+- Recorte de video (trim): seleccion de inicio/fin con dual-range slider, FFmpeg `-ss`/`-t` con input seeking
 - Espejo horizontal (filtro `hflip` de FFmpeg)
 - Marca de agua de imagen: superpuesta con posicion (5 presets + arrastre libre), tamaño (5-50%), opacidad (10-100%). Usa `-filter_complex` con `overlay`
 - Marca de agua de texto: texto con fuente configurable (Montserrat Alternates regular/bold, Arial, Courier, Times), tamaño (12-200px), color (hex), opacidad, posicion (5 presets + arrastre libre). Usa FFmpeg `drawtext`
@@ -200,7 +201,7 @@ VideoMobMp4/
 │
 ├── tests/
 │   └── unit/
-│       ├── converterCore.test.js  # 195 tests (funciones puras, presets, watermark, drawtext)
+│       ├── converterCore.test.js  # 215 tests (funciones puras, presets, watermark, drawtext)
 │       └── server.test.js         # 7 tests de integracion de la API
 │
 ├── e2e/
@@ -409,6 +410,9 @@ Esto previene ataques como `/../../../etc/passwd` o `/%2e%2e%2f%2e%2e%2fetc%2fpa
   - `platform` (string, opcional): "custom"|"web"|"tiktok"|"instagram"|"youtube", default "custom"
   - `igFormat` (string, opcional): "reels"|"story"|"feed"|"feed-vertical"|"feed-horizontal", default "reels" (solo aplica si platform="instagram")
   - `mirror` (string, opcional): "0"|"1", default "0" (espejo horizontal)
+  - `trimStart` (string, opcional): segundo de inicio del recorte
+  - `trimEnd` (string, opcional): segundo de fin del recorte
+  - `trimDuration` (string, opcional): duracion total del video original (para validacion)
   - `watermark` (file, opcional): imagen para marca de agua (PNG, JPG, WebP, SVG)
   - `watermarkPosition` (string, opcional): "top-left"|"top-right"|"bottom-left"|"bottom-right"|"center", default "bottom-right"
   - `watermarkSize` (string, opcional): porcentaje del ancho del video (5-50), default "20"
@@ -620,6 +624,9 @@ Cada conversion se gestiona como un "job" almacenado en un `Map` en memoria.
   platform: "custom",          // "custom"|"web"|"tiktok"|"instagram"|"youtube"
   igFormat: "reels",           // "reels"|"story"|"feed"|"feed-vertical"|"feed-horizontal" (solo para Instagram)
   mirror: false,               // true = aplicar espejo horizontal (hflip)
+  trimStart: null,             // Segundo de inicio del recorte (null si no hay)
+  trimEnd: null,               // Segundo de fin del recorte
+  trimDuration: null,          // Duracion total del video (para validacion)
   watermarkPath: null,         // Ruta al archivo de imagen (null si no hay)
   watermarkPosition: "bottom-right",  // Posición de la marca de agua
   watermarkSize: 20,           // Porcentaje del ancho del video (5-50)
@@ -746,6 +753,8 @@ ffmpeg -i input.mov \
   -movflags +faststart -pix_fmt yuv420p \
   -progress pipe:1 -y output.mp4
 ```
+
+Si trim activo, se inserta `-ss HH:MM:SS.s -t HH:MM:SS.s` antes de `-i` (input seeking, instantaneo). El calculo de progreso usa la duracion recortada en vez de la total.
 
 Si `mirror=true`, el filtro `hflip` se inyecta en la cadena `-vf` (en ambos paths).
 
@@ -1074,7 +1083,33 @@ Calculo de FPS: convierte `r_frame_rate` (ej: `"30000/1001"`) a decimal (ej: `29
 
 Devuelve `"file"` para `null`/`undefined`.
 
-### 7.11 `PLATFORM_PRESETS`
+### 7.11 `formatTimecode(seconds)`
+
+**Proposito:** formatear segundos a timecode `HH:MM:SS.s` para los argumentos `-ss`/`-t` de FFmpeg.
+
+| Entrada | Salida |
+|---------|--------|
+| `0` | `00:00:00.0` |
+| `30` | `00:00:30.0` |
+| `90` | `00:01:30.0` |
+| `3661` | `01:01:01.0` |
+| `5.5` | `00:00:05.5` |
+| `NaN` / negativo | `00:00:00.0` |
+
+### 7.12 `buildTrimArgs(trimStart, trimEnd, duration)`
+
+**Proposito:** generar argumentos FFmpeg para recorte de video.
+
+| Parametro | Tipo | Descripcion |
+|-----------|------|-------------|
+| `trimStart` | number\|string | Segundo de inicio |
+| `trimEnd` | number\|string | Segundo de fin |
+| `duration` | number\|string | Duracion total del video |
+| **Retorno** | string[] | `['-ss', timecode, '-t', timecode]` o `[]` si no hay recorte |
+
+Retorna `[]` si: valores invalidos, start >= end, duración <= 0, o el recorte cubre todo el video. Clampea start a 0 y end a duracion.
+
+### 7.13 `PLATFORM_PRESETS`
 
 **Tipo:** objeto exportado (constante).
 
@@ -1098,7 +1133,7 @@ Define los presets de conversion por plataforma. Cada clave es un ID de platafor
 
 El preset `custom` tiene todos los overrides a `null` (modo manual).
 
-### 7.12 `getPlatformPreset(platformId)`
+### 7.14 `getPlatformPreset(platformId)`
 
 **Proposito:** lookup de preset con fallback a `custom` para IDs desconocidos.
 
@@ -1107,7 +1142,7 @@ El preset `custom` tiene todos los overrides a `null` (modo manual).
 | `platformId` | string | ID del preset |
 | **Retorno** | object | Objeto preset de `PLATFORM_PRESETS` |
 
-### 7.13 `buildVideoFilterChain(preset, inputWidth, inputHeight, igFormat)`
+### 7.15 `buildVideoFilterChain(preset, inputWidth, inputHeight, igFormat)`
 
 **Proposito:** construir la cadena de filtros `-vf` para un preset de plataforma.
 
@@ -1125,7 +1160,7 @@ El preset `custom` tiene todos los overrides a `null` (modo manual).
 3. Si las dimensiones resultantes exceden `maxWidth`/`maxHeight` → añade scale (solo reduce, nunca amplia)
 4. Todas las dimensiones se redondean a numeros pares (requisito H.264)
 
-### 7.14 `buildPlatformArgs(platformId, quality, inputWidth, inputHeight, inputFps, igFormat)`
+### 7.16 `buildPlatformArgs(platformId, quality, inputWidth, inputHeight, inputFps, igFormat)`
 
 **Proposito:** generar el array completo de argumentos FFmpeg para un preset de plataforma.
 
@@ -1147,7 +1182,7 @@ El preset `custom` tiene todos los overrides a `null` (modo manual).
 - `-maxrate {kbps}k -bufsize {2x}k` (si el preset tiene bitrate cap)
 - `-c:a aac -b:a {audioBitrate}k`
 
-### 7.15 `WATERMARK_POSITIONS`
+### 7.17 `WATERMARK_POSITIONS`
 
 **Tipo:** objeto exportado (constante).
 
@@ -1163,13 +1198,13 @@ Define las 5 posiciones disponibles para la marca de agua:
 
 Las coordenadas usan expresiones FFmpeg: `W` = ancho del video, `H` = alto del video, `w` = ancho de la marca, `h` = alto de la marca.
 
-### 7.16 `WATERMARK_SIZES`
+### 7.18 `WATERMARK_SIZES`
 
 **Tipo:** objeto exportado (constante).
 
 Define los tamaños predefinidos para la marca de agua (porcentaje del ancho del video): 10%, 15%, 20%, 25%, 30%. El slider de la UI permite valores de 5 a 50.
 
-### 7.17 `buildWatermarkFilter(position, sizePct, opacity)`
+### 7.19 `buildWatermarkFilter(position, sizePct, opacity)`
 
 **Proposito:** generar los dos fragmentos de filtro FFmpeg necesarios para aplicar la marca de agua.
 
@@ -1194,7 +1229,7 @@ Define los tamaños predefinidos para la marca de agua (porcentaje del ancho del
 - Opacidad fuera de rango → clamped a 0.1 (min) o 1.0 (max)
 - Opacidad se redondea a 2 decimales
 
-### 7.18 `parseWatermarkPosition(position)`
+### 7.20 `parseWatermarkPosition(position)`
 
 **Proposito:** parsear posicion de marca de agua, soportando presets y formato custom.
 
@@ -1205,7 +1240,7 @@ Define los tamaños predefinidos para la marca de agua (porcentaje del ancho del
 
 Logica: si empieza con `custom:`, parsea X e Y como enteros no negativos. Si invalido o preset desconocido, fallback a `bottom-right`.
 
-### 7.19 `WATERMARK_FONTS`
+### 7.21 `WATERMARK_FONTS`
 
 **Tipo:** objeto exportado (constante).
 
@@ -1219,7 +1254,7 @@ Logica: si empieza con `custom:`, parsea X e Y como enteros no negativos. Si inv
 
 Fuentes con `file` usan `fontfile=` en FFmpeg (ruta al TTF). Fuentes del sistema (`file: null`) usan `font=` (fontconfig).
 
-### 7.20 `escapeDrawtext(text)`
+### 7.22 `escapeDrawtext(text)`
 
 **Proposito:** escapar texto para el filtro `drawtext` de FFmpeg.
 
@@ -1231,7 +1266,7 @@ Fuentes con `file` usan `fontfile=` en FFmpeg (ruta al TTF). Fuentes del sistema
 | `it's` | `it\u2019s` |
 | `null` / `undefined` | `""` |
 
-### 7.21 `buildTextWatermarkFilter(text, fontSize, fontColor, fontFamily, position, opacity)`
+### 7.23 `buildTextWatermarkFilter(text, fontSize, fontColor, fontFamily, position, opacity)`
 
 **Proposito:** generar la cadena de filtro `drawtext` de FFmpeg para marca de agua de texto.
 
@@ -1557,7 +1592,7 @@ npm run test:watch    # Modo watch (vitest)
 
 ### 10.2 Tests de funciones puras (converterCore.test.js)
 
-Archivo: `tests/unit/converterCore.test.js` — 195 tests.
+Archivo: `tests/unit/converterCore.test.js` — 215 tests.
 
 | Grupo `describe` | Tests | Que verifica |
 |-------------------|-------|-------------|
@@ -1583,6 +1618,8 @@ Archivo: `tests/unit/converterCore.test.js` — 195 tests.
 | `WATERMARK_FONTS` | 4 | 5 fuentes presentes, label+css en cada una, TTF para Montserrat, null para sistema |
 | `escapeDrawtext` | 9 | Texto normal, escape dos puntos, escape porcentaje, comillas unicode, null/undefined/vacio/numero, multiples especiales |
 | `buildTextWatermarkFilter` | 24 | Drawtext valido, font= vs fontfile=, posiciones, fontsize clamp, color valido/invalido, opacidad hex, fuente desconocida, texto vacio/null/undefined/espacios, escapado, integracion con filter chain |
+| `formatTimecode` | 9 | 0, 30, 90, 3661, decimales (5.5, 125.3), NaN, negativo, Infinity |
+| `buildTrimArgs` | 11 | Recorte parcial, timecodes correctos, start=0, video completo, start>=end, start negativo clamp, end>duracion clamp, valores no numericos, null/undefined, duracion 0/negativa, decimales |
 
 **Helper de test:**
 ```javascript
@@ -1712,6 +1749,7 @@ Descripcion paso a paso de una conversion exitosa:
 4. USUARIO selecciona plataforma (ej. TikTok) o "Personalizado"
    - Si plataforma seleccionada: controles de resolucion/preset se ocultan
    - Ajusta calidad (75), opcionalmente activa espejo horizontal
+   - Opcionalmente activa recorte: ajusta inicio/fin con dual-range slider
    - Opcionalmente activa marca de agua imagen y/o texto
    - Ambas se muestran en un preview unificado donde se pueden arrastrar independientemente
    - El preview refleja el espejo horizontal en tiempo real
@@ -1725,6 +1763,9 @@ Descripcion paso a paso de una conversion exitosa:
    - preset: "medium" (solo en modo Personalizado)
    - platform: "tiktok"
    - mirror: "0"
+   - trimStart: "5" (si recorte activo)
+   - trimEnd: "15"
+   - trimDuration: "30"
    - watermark: imagen (si activada)
    - watermarkPosition: "bottom-right"
    - watermarkSize: "20"

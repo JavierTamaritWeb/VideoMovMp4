@@ -90,4 +90,45 @@ describe('Server API', () => {
     const res = await request('GET', '/nonexistent.html');
     expect(res.status).toBe(404);
   });
+
+  it('GET /api/health devuelve version 1.1.2 y campos esperados', async () => {
+    const res = await request('GET', '/api/health');
+    expect(res.json).toHaveProperty('status');
+    expect(res.json).toHaveProperty('ffmpeg');
+    expect(res.json).toHaveProperty('uptime');
+    expect(res.json).toHaveProperty('activeJobs');
+    expect(res.json).toHaveProperty('totalJobs');
+    expect(res.json).toHaveProperty('version');
+    expect(typeof res.json.uptime).toBe('number');
+    expect(typeof res.json.activeJobs).toBe('number');
+  });
+
+  it('POST /api/convert con extensión no .mov → 400', async () => {
+    const boundary = '----TestBound456';
+    const body = [
+      `------TestBound456\r\n`,
+      `Content-Disposition: form-data; name="video"; filename="test.mp4"\r\n`,
+      `Content-Type: video/mp4\r\n`,
+      `\r\n`,
+      `fake video content\r\n`,
+      `------TestBound456--\r\n`,
+    ].join('');
+    const res = await request('POST', '/api/convert', body, {
+      'Content-Type': `multipart/form-data; boundary=----TestBound456`,
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toContain('.mov');
+  });
+
+  it('archivos CSS se sirven con content-type correcto', async () => {
+    const res = await request('GET', '/src/css/app.css');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/css');
+  });
+
+  it('archivos JS se sirven con content-type correcto', async () => {
+    const res = await request('GET', '/src/js/app.js');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/javascript');
+  });
 });

@@ -37,6 +37,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Multipart parsing:** Custom implementation in `server.mjs` supporting multiple files keyed by field name (video + watermark). Returns `{ fields, files, fileData, fileFilename }`.
 - **Graceful shutdown:** SIGTERM/SIGINT kill active FFmpeg processes, close SSE clients, clean temp files.
 - **Platform presets:** `PLATFORM_PRESETS` in `converterCore.js` defines per-platform FFmpeg settings (web, tiktok, instagram, whatsapp, youtube). `buildPlatformArgs()` returns the full FFmpeg args array; `buildVideoFilterChain()` handles aspect ratio crop + scale. When a platform is selected, resolution/encoding-preset controls are hidden and the preset drives those values.
+- **Trim (recorte):** Toggle + dual-range slider para seleccionar inicio/fin del vídeo. `formatTimecode()` y `buildTrimArgs()` en `converterCore.js`. FFmpeg usa `-ss`/`-t` antes de `-i` (input seeking). El cálculo de progreso usa la duración recortada.
 - **Mirror (hflip):** Toggle in the settings panel. The `hflip` filter is injected into the `-vf` chain in `server.mjs` after args are built (works with both custom and platform paths).
 - **Back button:** "Atrás" button in the result panel returns to `configuring` state with all settings preserved (file, platform, quality, watermarks, mirror, etc.) for re-conversion without re-uploading.
 - **Unified watermark preview:** Single canvas preview (`#wmPreview`) where image and text watermarks are rendered as independent draggable layers over the video frame. One `updateWmPreview()` function handles both. One set of drag handlers detects `e.target` to move the correct element. Mirror (hflip) is reflected in the preview in real-time.
@@ -44,7 +45,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Text watermark:** Text overlay via FFmpeg `drawtext`. Font (Montserrat Alternates regular/bold, Arial, Courier, Times), size (12-200px), color (hex), opacity (10-100%), position (5 presets + custom drag). `WATERMARK_FONTS`, `escapeDrawtext()`, `buildTextWatermarkFilter()` in `converterCore.js`. Font TTFs in `src/fonts/`.
 
 ## Endpoints
-- `POST /api/convert` — Upload MOV + start conversion job (fields: video, quality, resolution, preset, platform, igFormat, mirror, watermark, watermarkPosition, watermarkSize, watermarkOpacity, textWm, textWmFont, textWmSize, textWmColor, textWmOpacity, textWmPosition)
+- `POST /api/convert` — Upload MOV + start conversion job (fields: video, quality, resolution, preset, platform, igFormat, mirror, trimStart, trimEnd, trimDuration, watermark, watermarkPosition, watermarkSize, watermarkOpacity, textWm, textWmFont, textWmSize, textWmColor, textWmOpacity, textWmPosition)
 - `GET /api/jobs/:id` — SSE stream with progress events (metadata → progress → done/error)
 - `POST /api/jobs/:id/cancel` — Cancel conversion (sends SIGTERM to FFmpeg)
 - `GET /api/jobs/:id/download` — Download converted MP4
@@ -57,6 +58,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. `ffmpeg` → convert to MP4. Two paths:
    - **Custom:** libx264, user-selected CRF/resolution/preset (legacy path)
    - **Platform:** `buildPlatformArgs()` sets codec, profile, level, bitrate cap, aspect ratio crop, fps cap per platform
+   - If trim enabled: `-ss HH:MM:SS.s -t HH:MM:SS.s` inserted before `-i` (input seeking)
    - If mirror enabled: `hflip` filter appended to `-vf` chain
    - If image watermark enabled: switches from `-vf` to `-filter_complex` with `[0:v]{filters}[main]; [1:v]scale[wm]; [main][wm]overlay[v]`
    - If text watermark enabled: appends `drawtext=fontfile=...:text=...:fontsize=...:fontcolor=...` to `-vf` or `-filter_complex`

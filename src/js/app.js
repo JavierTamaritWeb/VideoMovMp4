@@ -96,6 +96,16 @@ let isDraggingWm = false;
 let dragWmTarget = null;
 let dragWmOffsetX = 0;
 let dragWmOffsetY = 0;
+// Trim refs
+const trimCheckbox = $('#trimCheckbox');
+const trimControls = $('#trimControls');
+const trimStart = $('#trimStart');
+const trimEnd = $('#trimEnd');
+const trimStartLabel = $('#trimStartLabel');
+const trimEndLabel = $('#trimEndLabel');
+const trimDurationLabel = $('#trimDurationLabel');
+const trimTrack = $('#trimTrack');
+let videoDuration = 0;
 
 // ─── Notyf ───────────────────────────────────────────────────────────────────
 const notyf = new Notyf({
@@ -106,6 +116,38 @@ const notyf = new Notyf({
     { type: 'success', background: '#10B981' },
     { type: 'error', background: '#EF4444' },
   ],
+});
+
+// ─── Trim ───────────────────────────────────────────────────────────────────
+trimCheckbox.addEventListener('change', () => {
+  trimControls.style.display = trimCheckbox.checked ? '' : 'none';
+});
+
+function updateTrimUI() {
+  const s = parseFloat(trimStart.value);
+  const e = parseFloat(trimEnd.value);
+  trimStartLabel.textContent = formatDuration(s);
+  trimEndLabel.textContent = formatDuration(e);
+  trimDurationLabel.textContent = formatDuration(Math.max(0, e - s));
+  // Update track highlight
+  const max = parseFloat(trimStart.max) || 1;
+  const pctStart = (s / max) * 100;
+  const pctEnd = (e / max) * 100;
+  trimTrack.style.background = `linear-gradient(to right, var(--bg-elevated) ${pctStart}%, var(--accent-primary) ${pctStart}%, var(--accent-primary) ${pctEnd}%, var(--bg-elevated) ${pctEnd}%)`;
+}
+
+trimStart.addEventListener('input', () => {
+  if (parseFloat(trimStart.value) >= parseFloat(trimEnd.value)) {
+    trimStart.value = Math.max(0, parseFloat(trimEnd.value) - 0.1);
+  }
+  updateTrimUI();
+});
+
+trimEnd.addEventListener('input', () => {
+  if (parseFloat(trimEnd.value) <= parseFloat(trimStart.value)) {
+    trimEnd.value = Math.min(videoDuration, parseFloat(trimStart.value) + 0.1);
+  }
+  updateTrimUI();
 });
 
 // ─── Mirror → refresh previews ──────────────────────────────────────────────
@@ -126,7 +168,7 @@ platformGrid.addEventListener('change', (e) => {
 
   const isCustom = selectedPlatform === 'custom';
   settingsGrid.classList.toggle('settings__grid--platform-active', !isCustom);
-  instagramFormat.hidden = selectedPlatform !== 'instagram';
+  instagramFormat.style.display = selectedPlatform === 'instagram' ? '' : 'none';
 
   const preset = PLATFORM_PRESETS[selectedPlatform];
   platformHint.textContent = isCustom ? '' : preset.description;
@@ -484,6 +526,14 @@ async function handleFile(file) {
     if (videoPreview.videoWidth && videoPreview.videoHeight) {
       resInfo.textContent = `(actual: ${videoPreview.videoWidth}×${videoPreview.videoHeight})`;
     }
+    // Set trim slider range
+    videoDuration = videoPreview.duration || 0;
+    trimStart.max = videoDuration;
+    trimEnd.max = videoDuration;
+    trimStart.value = 0;
+    trimEnd.value = videoDuration;
+    trimControls.style.display = trimCheckbox.checked ? '' : 'none';
+    updateTrimUI();
     updateWmPreview();
   }, { once: true });
 }
@@ -540,6 +590,11 @@ async function startConversion() {
   formData.append('preset', presetSelect.value);
   formData.append('platform', selectedPlatform);
   formData.append('mirror', mirrorCheckbox.checked ? '1' : '0');
+  if (trimCheckbox.checked) {
+    formData.append('trimStart', trimStart.value);
+    formData.append('trimEnd', trimEnd.value);
+    formData.append('trimDuration', String(videoDuration));
+  }
   if (watermarkCheckbox.checked && watermarkFile) {
     formData.append('watermark', watermarkFile);
     if (watermarkPosition.value === 'custom' && watermarkCustomX !== null) {
@@ -779,6 +834,13 @@ function resetAll() {
 
   mirrorCheckbox.checked = false;
 
+  // Reset trim
+  trimCheckbox.checked = false;
+  trimControls.style.display = 'none';
+  trimStart.value = 0;
+  trimEnd.value = 0;
+  videoDuration = 0;
+
   // Reset watermark
   watermarkCheckbox.checked = false;
   watermarkOptions.hidden = true;
@@ -830,7 +892,7 @@ function resetAll() {
   const customRadio = platformGrid.querySelector('input[value="custom"]');
   if (customRadio) customRadio.checked = true;
   settingsGrid.classList.remove('settings__grid--platform-active');
-  instagramFormat.hidden = true;
+  instagramFormat.style.display = 'none';
   platformHint.textContent = '';
 
   setState('idle');

@@ -21,6 +21,8 @@ import {
   WATERMARK_FONTS,
   escapeDrawtext,
   buildTextWatermarkFilter,
+  formatTimecode,
+  buildTrimArgs,
 } from '../../src/js/converterCore.js';
 
 // Helper: build fake magic bytes
@@ -365,6 +367,41 @@ describe('buildVideoFilterChain', () => {
     expect(vf).toBe('');
   });
 
+  it('portrait 1080×1350 con Instagram Feed vertical → sin crop ni scale (encaja exacto)', () => {
+    const vf = buildVideoFilterChain(igPreset, 1080, 1350, 'feed-vertical');
+    expect(vf).toBe('');
+  });
+
+  it('4K 3840×2160 con Instagram Feed horizontal → crop 16:9 + scale', () => {
+    const vf = buildVideoFilterChain(igPreset, 3840, 2160, 'feed-horizontal');
+    // 16:9 crop from 3840×2160 → crop width stays 3840, height = 3840/(16/9) = 2160 → ya es 16:9
+    // Pero excede max 1080 → scale
+    expect(vf).toContain('scale=');
+  });
+
+  it('cuadrado 500×500 con Instagram Feed cuadrado → sin filtro (no ampliar)', () => {
+    const vf = buildVideoFilterChain(igPreset, 500, 500, 'feed');
+    expect(vf).toBe('');
+  });
+
+  it('Story y Reels producen el mismo crop para misma entrada', () => {
+    const vfStory = buildVideoFilterChain(igPreset, 1920, 1080, 'story');
+    const vfReels = buildVideoFilterChain(igPreset, 1920, 1080, 'reels');
+    expect(vfStory).toBe(vfReels);
+  });
+
+  it('Feed vertical con landscape ancho → crop a 4:5', () => {
+    const vf = buildVideoFilterChain(igPreset, 1920, 1080, 'feed-vertical');
+    // 4/5 * 1080 = 864 → crop=864:1080
+    expect(vf).toMatch(/crop=86[24]:1080/);
+  });
+
+  it('Feed horizontal con portrait → crop a 16:9', () => {
+    const vf = buildVideoFilterChain(igPreset, 1080, 1920, 'feed-horizontal');
+    // 16/9 aspect, taller input → crop height = 1080/(16/9) = 607.5 → 608 even
+    expect(vf).toContain('crop=1080:');
+  });
+
   it('4K landscape con Web → scale a 1920', () => {
     const vf = buildVideoFilterChain(webPreset, 3840, 2160);
     expect(vf).toContain('scale=1920:-2');
@@ -452,11 +489,62 @@ describe('buildPlatformArgs', () => {
     expect(args).not.toContain('-vf');
   });
 
+  it('whatsapp con 60fps → incluye -r 30', () => {
+    const args = buildPlatformArgs('whatsapp', 75, 960, 540, 60);
+    expect(args).toContain('-r');
+    expect(args[args.indexOf('-r') + 1]).toBe('30');
+  });
+
+  it('whatsapp con 25fps → no incluye -r', () => {
+    const args = buildPlatformArgs('whatsapp', 75, 960, 540, 25);
+    expect(args).not.toContain('-r');
+  });
+
+  it('instagram con igFormat feed → genera crop 1:1', () => {
+    const args = buildPlatformArgs('instagram', 75, 1920, 1080, 30, 'feed');
+    expect(args).toContain('-vf');
+    expect(args[args.indexOf('-vf') + 1]).toContain('crop=1080:1080');
+  });
+
+  it('instagram con igFormat feed-vertical → genera crop 4:5', () => {
+    const args = buildPlatformArgs('instagram', 75, 1920, 1080, 30, 'feed-vertical');
+    expect(args).toContain('-vf');
+    expect(args[args.indexOf('-vf') + 1]).toContain('crop=');
+  });
+
+  it('instagram con igFormat feed-horizontal → scale a 1080', () => {
+    const args = buildPlatformArgs('instagram', 75, 1920, 1080, 30, 'feed-horizontal');
+    expect(args).toContain('-vf');
+    expect(args[args.indexOf('-vf') + 1]).toContain('scale=1080:-2');
+  });
+
+  it('instagram con igFormat story → misma salida que reels (9:16)', () => {
+    const argsStory = buildPlatformArgs('instagram', 75, 1920, 1080, 30, 'story');
+    const argsReels = buildPlatformArgs('instagram', 75, 1920, 1080, 30, 'reels');
+    const vfStory = argsStory[argsStory.indexOf('-vf') + 1];
+    const vfReels = argsReels[argsReels.indexOf('-vf') + 1];
+    expect(vfStory).toBe(vfReels);
+  });
+
+  it('instagram → incluye -maxrate 3500k, -profile:v main', () => {
+    const args = buildPlatformArgs('instagram', 75, 1080, 1920, 30);
+    expect(args[args.indexOf('-maxrate') + 1]).toBe('3500k');
+    expect(args[args.indexOf('-profile:v') + 1]).toBe('main');
+  });
+
   it('siempre incluye -c:v libx264 y -c:a aac', () => {
     for (const platform of ['web', 'tiktok', 'instagram', 'whatsapp', 'youtube']) {
       const args = buildPlatformArgs(platform, 75, 1920, 1080, 30);
       expect(args).toContain('-c:v');
       expect(args).toContain('-c:a');
+    }
+  });
+
+  it('todas las plataformas siempre incluyen -preset medium', () => {
+    for (const platform of ['web', 'tiktok', 'instagram', 'whatsapp', 'youtube']) {
+      const args = buildPlatformArgs(platform, 75, 1920, 1080, 30);
+      expect(args).toContain('-preset');
+      expect(args[args.indexOf('-preset') + 1]).toBe('medium');
     }
   });
 });
@@ -1063,5 +1151,90 @@ describe('buildTextWatermarkFilter', () => {
     expect(vf).toContain('scale=1920:-2,drawtext=');
     expect(vf).toContain("text='Mi Logo'");
     expect(vf).toContain("font='Courier'");
+  });
+});
+
+// ─── Trim ───────────────────────────────────────────────────────────────────
+
+describe('formatTimecode', () => {
+  it('0 → 00:00:00.0', () => {
+    expect(formatTimecode(0)).toBe('00:00:00.0');
+  });
+  it('30 → 00:00:30.0', () => {
+    expect(formatTimecode(30)).toBe('00:00:30.0');
+  });
+  it('90 → 00:01:30.0', () => {
+    expect(formatTimecode(90)).toBe('00:01:30.0');
+  });
+  it('3661 → 01:01:01.0', () => {
+    expect(formatTimecode(3661)).toBe('01:01:01.0');
+  });
+  it('5.5 → 00:00:05.5', () => {
+    expect(formatTimecode(5.5)).toBe('00:00:05.5');
+  });
+  it('125.3 → 00:02:05.3', () => {
+    expect(formatTimecode(125.3)).toBe('00:02:05.3');
+  });
+  it('NaN → 00:00:00.0', () => {
+    expect(formatTimecode(NaN)).toBe('00:00:00.0');
+  });
+  it('negativo → 00:00:00.0', () => {
+    expect(formatTimecode(-5)).toBe('00:00:00.0');
+  });
+  it('Infinity → 00:00:00.0', () => {
+    expect(formatTimecode(Infinity)).toBe('00:00:00.0');
+  });
+});
+
+describe('buildTrimArgs', () => {
+  it('recorte parcial 5-15 en vídeo de 30s → [-ss, ..., -t, ...]', () => {
+    const args = buildTrimArgs(5, 15, 30);
+    expect(args).toHaveLength(4);
+    expect(args[0]).toBe('-ss');
+    expect(args[2]).toBe('-t');
+  });
+  it('timecodes correctos para 5-15', () => {
+    const args = buildTrimArgs(5, 15, 30);
+    expect(args[1]).toBe('00:00:05.0');
+    expect(args[3]).toBe('00:00:10.0');
+  });
+  it('start=0, end < duración → recorta', () => {
+    const args = buildTrimArgs(0, 10, 30);
+    expect(args).toHaveLength(4);
+    expect(args[1]).toBe('00:00:00.0');
+    expect(args[3]).toBe('00:00:10.0');
+  });
+  it('cubre todo el vídeo → array vacío (sin recorte)', () => {
+    expect(buildTrimArgs(0, 30, 30)).toEqual([]);
+  });
+  it('start >= end → array vacío', () => {
+    expect(buildTrimArgs(10, 5, 30)).toEqual([]);
+    expect(buildTrimArgs(10, 10, 30)).toEqual([]);
+  });
+  it('start negativo → clamp a 0', () => {
+    const args = buildTrimArgs(-5, 10, 30);
+    expect(args[1]).toBe('00:00:00.0');
+  });
+  it('end > duración → clamp a duración', () => {
+    const args = buildTrimArgs(5, 50, 30);
+    expect(args[3]).toBe('00:00:25.0');
+  });
+  it('valores no numéricos → array vacío', () => {
+    expect(buildTrimArgs('abc', 10, 30)).toEqual([]);
+    expect(buildTrimArgs(5, 'abc', 30)).toEqual([]);
+    expect(buildTrimArgs(5, 10, 'abc')).toEqual([]);
+  });
+  it('null/undefined → array vacío', () => {
+    expect(buildTrimArgs(null, 10, 30)).toEqual([]);
+    expect(buildTrimArgs(5, undefined, 30)).toEqual([]);
+  });
+  it('duración 0 o negativa → array vacío', () => {
+    expect(buildTrimArgs(0, 5, 0)).toEqual([]);
+    expect(buildTrimArgs(0, 5, -10)).toEqual([]);
+  });
+  it('valores decimales se formatean correctamente', () => {
+    const args = buildTrimArgs(2.5, 8.7, 30);
+    expect(args[1]).toBe('00:00:02.5');
+    expect(args[3]).toContain('00:00:06');
   });
 });

@@ -124,6 +124,35 @@ export function sanitizeFilename(name) {
   return safe;
 }
 
+// ─── Trim ───────────────────────────────────────────────────────────────────
+
+export function formatTimecode(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '00:00:00.0';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.round((seconds % 1) * 10);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${ms}`;
+}
+
+export function buildTrimArgs(trimStart, trimEnd, duration) {
+  const start = parseFloat(trimStart);
+  const end = parseFloat(trimEnd);
+  const dur = parseFloat(duration);
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(dur)) return [];
+  if (dur <= 0) return [];
+
+  const clampedStart = Math.max(0, start);
+  const clampedEnd = Math.min(dur, end);
+  if (clampedEnd <= clampedStart) return [];
+  if (clampedStart <= 0.05 && clampedEnd >= dur - 0.05) return [];
+  const trimDuration = clampedEnd - clampedStart;
+  if (trimDuration <= 0) return [];
+
+  return ['-ss', formatTimecode(clampedStart), '-t', formatTimecode(trimDuration)];
+}
+
 // ─── Platform Presets ───────────────────────────────────────────────────────
 
 export const PLATFORM_PRESETS = {

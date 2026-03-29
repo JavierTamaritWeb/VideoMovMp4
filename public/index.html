@@ -106,7 +106,7 @@
               <span class="settings__platform-desc">Alta calidad, H.264 High</span>
             </label>
           </div>
-          <div class="settings__sub-format" id="instagramFormat" hidden>
+          <div class="settings__sub-format" id="instagramFormat" style="display:none">
             <span class="settings__sub-label">Formato:</span>
             <label class="settings__sub-option">
               <input type="radio" name="igFormat" value="reels" checked> Reels (9:16)
@@ -141,6 +141,30 @@
           <div class="settings__slider-scale">
             <span>Menor tamaño</span>
             <span>Mayor calidad</span>
+          </div>
+        </fieldset>
+
+        <!-- Trim -->
+        <fieldset class="settings__group settings__group--trim">
+          <legend class="settings__label">Recortar vídeo</legend>
+          <label class="settings__toggle-wrap">
+            <input type="checkbox" id="trimCheckbox" class="settings__toggle-input">
+            <span class="settings__toggle-track"></span>
+            <span class="settings__toggle-text">Recortar inicio y/o final</span>
+          </label>
+          <div class="settings__trim-controls" id="trimControls" style="display:none">
+            <div class="settings__trim-times">
+              <span class="settings__trim-time" id="trimStartLabel">00:00</span>
+              <span class="settings__trim-time settings__trim-time--end" id="trimEndLabel">00:00</span>
+            </div>
+            <div class="settings__trim-slider">
+              <input type="range" id="trimStart" min="0" max="100" value="0" step="0.1" class="settings__trim-range settings__trim-range--start" aria-label="Inicio de recorte">
+              <input type="range" id="trimEnd" min="0" max="100" value="100" step="0.1" class="settings__trim-range settings__trim-range--end" aria-label="Fin de recorte">
+              <div class="settings__trim-track" id="trimTrack"></div>
+            </div>
+            <div class="settings__trim-duration">
+              <i class="fa-solid fa-scissors"></i> Duración seleccionada: <span id="trimDurationLabel">00:00</span>
+            </div>
           </div>
         </fieldset>
 
