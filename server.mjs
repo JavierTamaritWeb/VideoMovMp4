@@ -121,34 +121,34 @@ function checkRateLimit(ip) {
 // ─── Jobs system ─────────────────────────────────────────────────────────────
 const jobs = new Map();
 
-function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat, mirror, watermarkPath, watermarkPosition, watermarkSize, watermarkOpacity, textWm, trimStart, trimEnd, trimDuration, mute, speed, targetSizeMB, videoFilter) {
+function createJob(opts) {
   const id = uuidv4();
   const outputPath = path.join(CONVERTED_DIR, `${id}.mp4`);
   const job = {
     id,
     state: 'queued',
-    inputPath,
+    inputPath: opts.inputPath,
     outputPath,
-    originalFilename,
-    sanitizedFilename: sanitized,
-    quality: parseInt(quality) || 75,
-    resolution: resolution || 'original',
-    preset: preset || 'medium',
-    platform: platform || 'custom',
-    igFormat: igFormat || 'reels',
-    mirror: mirror === '1' || mirror === true,
-    watermarkPath: watermarkPath || null,
-    watermarkPosition: watermarkPosition || 'bottom-right',
-    watermarkSize: parseInt(watermarkSize) || 20,
-    watermarkOpacity: parseFloat(watermarkOpacity) || 1,
-    textWm: textWm || null,
-    trimStart: trimStart || null,
-    trimEnd: trimEnd || null,
-    trimDuration: trimDuration || null,
-    mute: mute === '1' || mute === true,
-    speed: parseFloat(speed) || 1,
-    targetSizeMB: parseFloat(targetSizeMB) || null,
-    videoFilter: videoFilter || 'none',
+    originalFilename: opts.originalFilename,
+    sanitizedFilename: opts.sanitized,
+    quality: parseInt(opts.quality) || 75,
+    resolution: opts.resolution || 'original',
+    preset: opts.preset || 'medium',
+    platform: opts.platform || 'custom',
+    igFormat: opts.igFormat || 'reels',
+    mirror: opts.mirror === '1' || opts.mirror === true,
+    watermarkPath: opts.watermarkPath || null,
+    watermarkPosition: opts.watermarkPosition || 'bottom-right',
+    watermarkSize: parseInt(opts.watermarkSize) || 20,
+    watermarkOpacity: parseFloat(opts.watermarkOpacity) || 1,
+    textWm: opts.textWm || null,
+    trimStart: opts.trimStart || null,
+    trimEnd: opts.trimEnd || null,
+    trimDuration: opts.trimDuration || null,
+    mute: opts.mute === '1' || opts.mute === true,
+    speed: parseFloat(opts.speed) || 1,
+    targetSizeMB: parseFloat(opts.targetSizeMB) || null,
+    videoFilter: opts.videoFilter || 'none',
     metadata: null,
     progress: { percent: 0, fps: 0, speed: '', elapsed: 0, eta: 0 },
     ffmpegProcess: null,
@@ -366,8 +366,9 @@ function startConversion(job) {
     log('INFO', `Texto marca de agua: "${job.textWm.text}"`, job.id);
   }
 
-  // Mute audio: replace audio codec args with -an
-  if (job.mute) {
+  // Mute audio or no audio in source: replace audio codec args with -an
+  const hasNoAudio = job.metadata?.audioCodec === 'none';
+  if (job.mute || hasNoAudio) {
     // Remove -c:a and -b:a pairs
     for (const flag of ['-c:a', '-b:a']) {
       const idx = args.indexOf(flag);
@@ -383,7 +384,7 @@ function startConversion(job) {
 
   // Target size: replace CRF with bitrate-based encoding
   if (job.targetSizeMB && job.metadata?.duration) {
-    const audioBr = job.mute ? 0 : 128;
+    const audioBr = (job.mute || hasNoAudio) ? 0 : 128;
     const tsArgs = buildTargetSizeArgs(job.targetSizeMB, job.metadata.duration, audioBr);
     if (tsArgs) {
       // Remove -crf if present
@@ -424,6 +425,15 @@ function startConversion(job) {
   job.ffmpegProcess = proc;
   job.state = 'converting';
 
+  // Timeout: kill FFmpeg after 30 minutes to prevent hanging slots
+  const FFMPEG_TIMEOUT_MS = 30 * 60 * 1000;
+  const ffmpegTimer = setTimeout(() => {
+    if (proc.exitCode === null) {
+      log('WARN', 'FFmpeg timeout, matando proceso', job.id);
+      proc.kill('SIGTERM');
+    }
+  }, FFMPEG_TIMEOUT_MS);
+
   // Use trim duration if trimming, otherwise full video duration
   let effectiveDuration = (trimArgs.length > 0 && job.trimStart && job.trimEnd)
     ? Math.max(0, parseFloat(job.trimEnd) - parseFloat(job.trimStart))
@@ -445,7 +455,7 @@ function startConversion(job) {
       if (key?.trim() === 'progress') {
         const outTimeUs = parseInt(progressData.out_time_us) || 0;
         const percent = totalDurationUs > 0
-          ? Math.min(99, Math.round((outTimeUs / totalDurationUs) * 100))
+          ? Math.min(100, Math.round((outTimeUs / totalDurationUs) * 100))
           : 0;
         const elapsed = (Date.now() - startTime) / 1000;
         const eta = percent > 0 ? (elapsed / percent) * (100 - percent) : 0;
@@ -468,6 +478,7 @@ function startConversion(job) {
   proc.stderr.on('data', d => stderrBuf += d);
 
   proc.on('close', async (code, signal) => {
+    clearTimeout(ffmpegTimer);
     job.ffmpegProcess = null;
 
     if (signal === 'SIGTERM' || job.state === 'cancelled') {
@@ -742,26 +753,34 @@ export const server = http.createServer(async (req, res) => {
       }
 
       // Create job
-      const job = createJob(
+      // Validate watermark position
+      const wpRaw = fields.watermarkPosition || 'bottom-right';
+      const validWmPositions = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'];
+      const wmPos = (validWmPositions.includes(wpRaw) || /^custom:\d+:\d+$/.test(wpRaw)) ? wpRaw : 'bottom-right';
+
+      // Validate platform
+      const validPlatforms = ['custom', 'web', 'tiktok', 'instagram', 'whatsapp', 'youtube'];
+      const platform = validPlatforms.includes(fields.platform) ? fields.platform : 'custom';
+
+      // Validate video filter
+      const validFilters = ['none', 'grayscale', 'sepia', 'invert', 'vintage', 'vignette', 'blur', 'sharpen', 'bright', 'contrast', 'saturate', 'desaturate'];
+      const vFilter = validFilters.includes(fields.videoFilter) ? fields.videoFilter : 'none';
+
+      const job = createJob({
         inputPath,
-        fileFilename,
+        originalFilename: fileFilename,
         sanitized,
-        fields.quality || '75',
-        fields.resolution || 'original',
-        fields.preset || 'medium',
-        fields.platform || 'custom',
-        fields.igFormat || 'reels',
-        fields.mirror || '0',
+        quality: fields.quality || '75',
+        resolution: fields.resolution || 'original',
+        preset: fields.preset || 'medium',
+        platform,
+        igFormat: fields.igFormat || 'reels',
+        mirror: fields.mirror || '0',
         watermarkPath,
-        (() => {
-          const wp = fields.watermarkPosition || 'bottom-right';
-          const validPresets = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'];
-          if (validPresets.includes(wp) || /^custom:\d+:\d+$/.test(wp)) return wp;
-          return 'bottom-right';
-        })(),
-        fields.watermarkSize || '20',
-        fields.watermarkOpacity || '1',
-        fields.textWm ? {
+        watermarkPosition: wmPos,
+        watermarkSize: fields.watermarkSize || '20',
+        watermarkOpacity: fields.watermarkOpacity || '1',
+        textWm: fields.textWm ? {
           text: fields.textWm,
           font: fields.textWmFont || 'arial',
           size: fields.textWmSize || '48',
@@ -769,14 +788,14 @@ export const server = http.createServer(async (req, res) => {
           opacity: fields.textWmOpacity || '1',
           position: fields.textWmPosition || 'bottom-right',
         } : null,
-        fields.trimStart || null,
-        fields.trimEnd || null,
-        fields.trimDuration || null,
-        fields.mute || '0',
-        fields.speed || '1',
-        fields.targetSizeMB || null,
-        fields.videoFilter || 'none',
-      );
+        trimStart: fields.trimStart || null,
+        trimEnd: fields.trimEnd || null,
+        trimDuration: fields.trimDuration || null,
+        mute: fields.mute || '0',
+        speed: fields.speed || '1',
+        targetSizeMB: fields.targetSizeMB || null,
+        videoFilter: vFilter,
+      });
       // Override the job id to match the one used for the file
       jobs.delete(job.id);
       job.id = jobId;

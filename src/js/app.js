@@ -249,6 +249,9 @@ watermarkInput.addEventListener('change', (e) => {
     return;
   }
   watermarkFile = file;
+  if (watermarkPreview.src && watermarkPreview.src.startsWith('blob:')) {
+    URL.revokeObjectURL(watermarkPreview.src);
+  }
   watermarkPreview.src = URL.createObjectURL(file);
   watermarkRemove.hidden = false;
   updateWmPreview();
@@ -587,13 +590,20 @@ async function handleFile(file) {
   fileName.textContent = file.name;
   fileSizeEl.textContent = formatFileSize(file.size);
 
-  // Video preview
+  // Video preview (revoke previous URL if exists)
+  if (videoPreview.src && videoPreview.src.startsWith('blob:')) {
+    URL.revokeObjectURL(videoPreview.src);
+  }
   const objectUrl = URL.createObjectURL(file);
   videoPreview.src = objectUrl;
   videoPreview.load();
 
   setState('configuring');
   resInfo.textContent = '';
+
+  videoPreview.addEventListener('error', () => {
+    notyf.error('No se pudo cargar la vista previa del vídeo');
+  }, { once: true });
 
   // Try to read video dimensions from the preview element
   videoPreview.addEventListener('loadedmetadata', () => {

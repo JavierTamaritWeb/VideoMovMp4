@@ -1256,10 +1256,10 @@ describe('buildTargetSizeArgs', () => {
   });
   it('bitrate calculado correctamente para 8MB/30s', () => {
     const args = buildTargetSizeArgs(8, 30, 128);
-    // totalBits = 8 * 8 * 1024 * 1024 = 67108864
+    // totalBits = 8 * 8 * 1024 * 1024 * 0.98 = 65766846
     // audioBits = 128 * 1000 * 30 = 3840000
-    // videoBitrate = (67108864 - 3840000) / 30 / 1000 = 2108
-    expect(args[1]).toBe('2108k');
+    // videoBitrate = (65766846 - 3840000) / 30 / 1000 = 2064
+    expect(args[1]).toBe('2064k');
   });
   it('16MB en vídeo de 60s', () => {
     const args = buildTargetSizeArgs(16, 60, 128);
@@ -1441,5 +1441,44 @@ describe('getVideoFilter', () => {
   });
   it('undefined → null', () => {
     expect(getVideoFilter(undefined)).toBeNull();
+  });
+});
+
+// ─── Bugfix verification tests ──────────────────────────────────────────────
+
+describe('escapeDrawtext (newlines)', () => {
+  it('reemplaza \\n por espacio', () => {
+    expect(escapeDrawtext('line1\nline2')).toBe('line1 line2');
+  });
+  it('reemplaza \\r por vacío', () => {
+    expect(escapeDrawtext('line1\r\nline2')).toBe('line1 line2');
+  });
+  it('múltiples saltos de línea', () => {
+    const result = escapeDrawtext('a\nb\nc');
+    expect(result).toBe('a b c');
+    expect(result).not.toContain('\n');
+  });
+});
+
+describe('VIDEO_FILTERS css (vignette fix)', () => {
+  it('vignette tiene css distinto de "none"', () => {
+    expect(VIDEO_FILTERS.vignette.css).not.toBe('none');
+    expect(VIDEO_FILTERS.vignette.css.length).toBeGreaterThan(0);
+  });
+  it('todos los filtros excepto none tienen css distinto de "none"', () => {
+    for (const [key, f] of Object.entries(VIDEO_FILTERS)) {
+      if (key === 'none') continue;
+      expect(f.css).not.toBe('none');
+    }
+  });
+});
+
+describe('buildTargetSizeArgs (container overhead)', () => {
+  it('resultado es menor que sin overhead (2% menos)', () => {
+    const args = buildTargetSizeArgs(8, 30, 128);
+    const bitrate = parseInt(args[1]);
+    // Sin overhead sería 2108, con overhead debe ser menor
+    expect(bitrate).toBeLessThan(2108);
+    expect(bitrate).toBeGreaterThan(2000);
   });
 });

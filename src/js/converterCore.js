@@ -132,7 +132,7 @@ export const VIDEO_FILTERS = {
   sepia:      { label: 'Sepia', filter: 'colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131', css: 'sepia(1)' },
   invert:     { label: 'Invertido', filter: 'negate', css: 'invert(1)' },
   vintage:    { label: 'Vintage', filter: 'curves=vintage', css: 'sepia(0.4) contrast(1.1) brightness(0.9)' },
-  vignette:   { label: 'Viñeta', filter: 'vignette=PI/4', css: 'none' },
+  vignette:   { label: 'Viñeta', filter: 'vignette=PI/4', css: 'brightness(0.85) contrast(1.1)' },
   blur:       { label: 'Desenfoque', filter: 'boxblur=4:1', css: 'blur(3px)' },
   sharpen:    { label: 'Enfoque', filter: 'unsharp=5:5:1.5', css: 'contrast(1.2)' },
   bright:     { label: 'Brillo +', filter: 'eq=brightness=0.15', css: 'brightness(1.3)' },
@@ -185,7 +185,7 @@ export function buildTargetSizeArgs(targetMB, durationSec, audioBitrateKbps) {
 
   if (!Number.isFinite(mb) || !Number.isFinite(dur) || mb <= 0 || dur <= 0) return null;
 
-  const totalBits = mb * 8 * 1024 * 1024;
+  const totalBits = mb * 8 * 1024 * 1024 * 0.98; // 2% container overhead
   const audioBits = abr * 1000 * dur;
   const videoBitrate = Math.floor((totalBits - audioBits) / dur / 1000);
 
@@ -492,7 +492,9 @@ export function escapeDrawtext(text) {
     .replace(/\\/g, '\\\\\\\\')
     .replace(/'/g, "\u2019")
     .replace(/:/g, '\\:')
-    .replace(/%/g, '%%');
+    .replace(/%/g, '%%')
+    .replace(/\n/g, ' ')
+    .replace(/\r/g, '');
 }
 
 export function buildTextWatermarkFilter(text, fontSize, fontColor, fontFamily, position, opacity) {
