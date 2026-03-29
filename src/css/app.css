@@ -98,7 +98,7 @@ body {
 
 .main {
   flex: 1;
-  max-width: 960px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 2rem 1.5rem;
   width: 100%;
@@ -513,6 +513,103 @@ body {
   display: none;
 }
 
+/* ─── Target Size ────────────────────────────────────────────────────── */
+
+.settings__group--targetsize {
+  grid-column: 1 / -1;
+}
+
+.settings__targetsize-controls {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.settings__targetsize-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings__targetsize-input {
+  width: 80px;
+  padding: 0.5rem 0.6rem;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.settings__targetsize-input:focus {
+  border-color: var(--accent-primary);
+  outline: none;
+}
+
+.settings__targetsize-unit {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.settings__targetsize-presets {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.settings__targetsize-btn {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.8rem;
+}
+
+/* ─── Video Filter ───────────────────────────────────────────────────── */
+
+.settings__group--filter {
+  grid-column: 1 / -1;
+}
+
+.settings__filter-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.settings__filter-btn {
+  padding: 0.4rem 0.75rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-family: var(--font);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.settings__filter-btn:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.settings__filter-btn--active {
+  border-color: var(--accent-primary);
+  background: rgba(124, 58, 237, 0.08);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+/* ─── Speed ──────────────────────────────────────────────────────────── */
+
+.settings__group--speed {
+  grid-column: 1 / -1;
+}
+
 /* ─── Trim ───────────────────────────────────────────────────────────── */
 
 .settings__group--trim {
@@ -746,14 +843,26 @@ body {
 
 /* ─── Unified Watermark Preview ─────────────────────────────────────── */
 
-.settings__wm-preview {
+.settings__preview-compare {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.settings__preview-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.settings__preview-hint {
   grid-column: 1 / -1;
 }
 
 .settings__wm-preview-box {
   position: relative;
   width: 100%;
-  max-width: 480px;
   background: #000;
   border-radius: var(--radius);
   border: 1px solid var(--border);

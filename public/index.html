@@ -144,6 +144,29 @@
           </div>
         </fieldset>
 
+        <!-- Target size -->
+        <fieldset class="settings__group settings__group--targetsize">
+          <legend class="settings__label">Comprimir a tamaño máximo</legend>
+          <label class="settings__toggle-wrap">
+            <input type="checkbox" id="targetSizeCheckbox" class="settings__toggle-input">
+            <span class="settings__toggle-track"></span>
+            <span class="settings__toggle-text">Limitar tamaño del archivo</span>
+          </label>
+          <div class="settings__targetsize-controls" id="targetSizeControls" style="display:none">
+            <div class="settings__targetsize-row">
+              <input type="number" id="targetSizeInput" class="settings__targetsize-input" min="1" max="2048" value="16" placeholder="MB">
+              <span class="settings__targetsize-unit">MB</span>
+            </div>
+            <div class="settings__targetsize-presets">
+              <button type="button" class="btn btn--ghost settings__targetsize-btn" data-size="8">8 MB</button>
+              <button type="button" class="btn btn--ghost settings__targetsize-btn" data-size="16">16 MB</button>
+              <button type="button" class="btn btn--ghost settings__targetsize-btn" data-size="25">25 MB</button>
+              <button type="button" class="btn btn--ghost settings__targetsize-btn" data-size="50">50 MB</button>
+            </div>
+            <p class="settings__hint">El bitrate se calculará automáticamente. Sustituye el control de calidad.</p>
+          </div>
+        </fieldset>
+
         <!-- Trim -->
         <fieldset class="settings__group settings__group--trim">
           <legend class="settings__label">Recortar vídeo</legend>
@@ -182,6 +205,24 @@
           </div>
         </fieldset>
 
+        <!-- Speed -->
+        <fieldset class="settings__group settings__group--speed">
+          <legend class="settings__label">Velocidad: <span id="speedValue">1x</span></legend>
+          <div class="settings__slider-wrap">
+            <input type="range" id="speedSlider" min="0.25" max="4" value="1" step="0.25" class="settings__slider" aria-label="Velocidad del vídeo">
+          </div>
+          <div class="settings__slider-scale">
+            <span>Lento 0.25x</span>
+            <span>Rápido 4x</span>
+          </div>
+        </fieldset>
+
+        <!-- Video filter -->
+        <fieldset class="settings__group settings__group--filter">
+          <legend class="settings__label">Filtro de vídeo</legend>
+          <div class="settings__filter-grid" id="filterGrid"></div>
+        </fieldset>
+
         <!-- Mirror -->
         <fieldset class="settings__group">
           <legend class="settings__label">Espejo horizontal</legend>
@@ -189,6 +230,16 @@
             <input type="checkbox" id="mirrorCheckbox" class="settings__toggle-input">
             <span class="settings__toggle-track"></span>
             <span class="settings__toggle-text">Invertir vídeo horizontalmente</span>
+          </label>
+        </fieldset>
+
+        <!-- Mute audio -->
+        <fieldset class="settings__group">
+          <legend class="settings__label">Audio</legend>
+          <label class="settings__toggle-wrap">
+            <input type="checkbox" id="muteCheckbox" class="settings__toggle-input">
+            <span class="settings__toggle-track"></span>
+            <span class="settings__toggle-text">Silenciar audio</span>
           </label>
         </fieldset>
 
@@ -294,15 +345,23 @@
           </div>
         </fieldset>
 
-        <!-- Unified watermark preview -->
-        <div class="settings__wm-preview" id="wmPreview" hidden>
-          <label class="settings__watermark-label">Vista previa</label>
-          <div class="settings__wm-preview-box" id="wmPreviewBox">
-            <canvas id="wmPreviewCanvas"></canvas>
-            <img id="wmPreviewImg" class="settings__wm-preview-drag" alt="" draggable="false">
-            <span id="wmPreviewText" class="settings__wm-preview-drag settings__wm-preview-text"></span>
+        <!-- Comparison preview -->
+        <div class="settings__preview-compare" id="wmPreview" hidden>
+          <div class="settings__preview-side">
+            <label class="settings__watermark-label">Original</label>
+            <div class="settings__wm-preview-box" id="wmOriginalBox">
+              <canvas id="wmOriginalCanvas"></canvas>
+            </div>
           </div>
-          <p class="settings__hint">Arrastra las marcas de agua para posicionarlas</p>
+          <div class="settings__preview-side">
+            <label class="settings__watermark-label">Resultado</label>
+            <div class="settings__wm-preview-box" id="wmPreviewBox">
+              <canvas id="wmPreviewCanvas"></canvas>
+              <img id="wmPreviewImg" class="settings__wm-preview-drag" alt="" draggable="false">
+              <span id="wmPreviewText" class="settings__wm-preview-drag settings__wm-preview-text"></span>
+            </div>
+          </div>
+          <p class="settings__hint settings__preview-hint">Arrastra las marcas de agua en el panel de resultado para posicionarlas.</p>
         </div>
 
         <!-- Preset -->

@@ -124,6 +124,28 @@ export function sanitizeFilename(name) {
   return safe;
 }
 
+// ─── Video Filters ──────────────────────────────────────────────────────────
+
+export const VIDEO_FILTERS = {
+  none:       { label: 'Sin filtro', filter: null, css: 'none' },
+  grayscale:  { label: 'Blanco y negro', filter: 'colorchannelmixer=.3:.4:.3:0:.3:.4:.3:0:.3:.4:.3', css: 'grayscale(1)' },
+  sepia:      { label: 'Sepia', filter: 'colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131', css: 'sepia(1)' },
+  invert:     { label: 'Invertido', filter: 'negate', css: 'invert(1)' },
+  vintage:    { label: 'Vintage', filter: 'curves=vintage', css: 'sepia(0.4) contrast(1.1) brightness(0.9)' },
+  vignette:   { label: 'Viñeta', filter: 'vignette=PI/4', css: 'none' },
+  blur:       { label: 'Desenfoque', filter: 'boxblur=4:1', css: 'blur(3px)' },
+  sharpen:    { label: 'Enfoque', filter: 'unsharp=5:5:1.5', css: 'contrast(1.2)' },
+  bright:     { label: 'Brillo +', filter: 'eq=brightness=0.15', css: 'brightness(1.3)' },
+  contrast:   { label: 'Contraste +', filter: 'eq=contrast=1.4', css: 'contrast(1.4)' },
+  saturate:   { label: 'Saturación +', filter: 'eq=saturation=1.5', css: 'saturate(1.5)' },
+  desaturate: { label: 'Desaturado', filter: 'eq=saturation=0.3', css: 'saturate(0.3)' },
+};
+
+export function getVideoFilter(filterId) {
+  const f = VIDEO_FILTERS[filterId];
+  return f?.filter || null;
+}
+
 // ─── Trim ───────────────────────────────────────────────────────────────────
 
 export function formatTimecode(seconds) {
@@ -151,6 +173,52 @@ export function buildTrimArgs(trimStart, trimEnd, duration) {
   if (trimDuration <= 0) return [];
 
   return ['-ss', formatTimecode(clampedStart), '-t', formatTimecode(trimDuration)];
+}
+
+// ─── Target Size ────────────────────────────────────────────────────────────
+
+export function buildTargetSizeArgs(targetMB, durationSec, audioBitrateKbps) {
+  const mb = parseFloat(targetMB);
+  const dur = parseFloat(durationSec);
+  const parsedAbr = parseFloat(audioBitrateKbps);
+  const abr = Number.isFinite(parsedAbr) ? parsedAbr : 128;
+
+  if (!Number.isFinite(mb) || !Number.isFinite(dur) || mb <= 0 || dur <= 0) return null;
+
+  const totalBits = mb * 8 * 1024 * 1024;
+  const audioBits = abr * 1000 * dur;
+  const videoBitrate = Math.floor((totalBits - audioBits) / dur / 1000);
+
+  if (videoBitrate < 100) return null;
+
+  return ['-b:v', `${videoBitrate}k`, '-maxrate', `${videoBitrate}k`, '-bufsize', `${videoBitrate * 2}k`];
+}
+
+// ─── Speed ──────────────────────────────────────────────────────────────────
+
+export function buildSpeedFilter(speed) {
+  const s = parseFloat(speed);
+  if (!Number.isFinite(s)) return null;
+
+  const clamped = Math.max(0.25, Math.min(4, s));
+  if (Math.abs(clamped - 1) < 0.01) return null;
+
+  const videoFilter = `setpts=${(1 / clamped).toFixed(4)}*PTS`;
+
+  // atempo only accepts 0.5-2.0, so chain multiple for extreme values
+  const atempoChain = [];
+  let remaining = clamped;
+  while (remaining > 2.01) {
+    atempoChain.push('atempo=2.0');
+    remaining /= 2;
+  }
+  while (remaining < 0.49) {
+    atempoChain.push('atempo=0.5');
+    remaining /= 0.5;
+  }
+  atempoChain.push(`atempo=${remaining.toFixed(4)}`);
+
+  return { videoFilter, audioFilter: atempoChain.join(',') };
 }
 
 // ─── Platform Presets ───────────────────────────────────────────────────────

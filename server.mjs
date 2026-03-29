@@ -19,6 +19,9 @@ import {
   buildWatermarkFilter,
   buildTextWatermarkFilter,
   buildTrimArgs,
+  buildTargetSizeArgs,
+  buildSpeedFilter,
+  getVideoFilter,
 } from './src/js/converterCore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -118,7 +121,7 @@ function checkRateLimit(ip) {
 // ─── Jobs system ─────────────────────────────────────────────────────────────
 const jobs = new Map();
 
-function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat, mirror, watermarkPath, watermarkPosition, watermarkSize, watermarkOpacity, textWm, trimStart, trimEnd, trimDuration) {
+function createJob(inputPath, originalFilename, sanitized, quality, resolution, preset, platform, igFormat, mirror, watermarkPath, watermarkPosition, watermarkSize, watermarkOpacity, textWm, trimStart, trimEnd, trimDuration, mute, speed, targetSizeMB, videoFilter) {
   const id = uuidv4();
   const outputPath = path.join(CONVERTED_DIR, `${id}.mp4`);
   const job = {
@@ -142,6 +145,10 @@ function createJob(inputPath, originalFilename, sanitized, quality, resolution, 
     trimStart: trimStart || null,
     trimEnd: trimEnd || null,
     trimDuration: trimDuration || null,
+    mute: mute === '1' || mute === true,
+    speed: parseFloat(speed) || 1,
+    targetSizeMB: parseFloat(targetSizeMB) || null,
+    videoFilter: videoFilter || 'none',
     metadata: null,
     progress: { percent: 0, fps: 0, speed: '', elapsed: 0, eta: 0 },
     ffmpegProcess: null,
@@ -291,6 +298,18 @@ function startConversion(job) {
     }
   }
 
+  // Inject video filter (grayscale, sepia, etc.)
+  const vFilter = getVideoFilter(job.videoFilter);
+  if (vFilter) {
+    const vfIdx = args.indexOf('-vf');
+    if (vfIdx !== -1) {
+      args[vfIdx + 1] += `,${vFilter}`;
+    } else {
+      const progIdx = args.indexOf('-progress');
+      args.splice(progIdx, 0, '-vf', vFilter);
+    }
+  }
+
   // Inject watermark overlay (requires -filter_complex instead of -vf)
   if (job.watermarkPath) {
     const { scaleFilter, overlayFilter } = buildWatermarkFilter(job.watermarkPosition, job.watermarkSize, job.watermarkOpacity);
@@ -347,14 +366,70 @@ function startConversion(job) {
     log('INFO', `Texto marca de agua: "${job.textWm.text}"`, job.id);
   }
 
+  // Mute audio: replace audio codec args with -an
+  if (job.mute) {
+    // Remove -c:a and -b:a pairs
+    for (const flag of ['-c:a', '-b:a']) {
+      const idx = args.indexOf(flag);
+      if (idx !== -1) args.splice(idx, 2);
+    }
+    // Remove -map 0:a? if present
+    const mapAIdx = args.indexOf('0:a?');
+    if (mapAIdx !== -1) args.splice(mapAIdx, 1);
+    // Add -an before -progress
+    const progIdx = args.indexOf('-progress');
+    args.splice(progIdx, 0, '-an');
+  }
+
+  // Target size: replace CRF with bitrate-based encoding
+  if (job.targetSizeMB && job.metadata?.duration) {
+    const audioBr = job.mute ? 0 : 128;
+    const tsArgs = buildTargetSizeArgs(job.targetSizeMB, job.metadata.duration, audioBr);
+    if (tsArgs) {
+      // Remove -crf if present
+      const crfIdx = args.indexOf('-crf');
+      if (crfIdx !== -1) args.splice(crfIdx, 2);
+      // Insert bitrate args before -progress
+      const progIdx = args.indexOf('-progress');
+      args.splice(progIdx, 0, ...tsArgs);
+      log('INFO', `Target size: ${job.targetSizeMB} MB`, job.id);
+    }
+  }
+
+  // Speed filter
+  if (job.speed !== 1) {
+    const speedResult = buildSpeedFilter(job.speed);
+    if (speedResult) {
+      // Inject video speed filter
+      const vfIdx = args.indexOf('-vf');
+      const fcIdx = args.indexOf('-filter_complex');
+      if (fcIdx !== -1) {
+        args[fcIdx + 1] = args[fcIdx + 1].replace(/\[v\]$/, `,${speedResult.videoFilter}[v]`);
+      } else if (vfIdx !== -1) {
+        args[vfIdx + 1] += `,${speedResult.videoFilter}`;
+      } else {
+        const progIdx = args.indexOf('-progress');
+        args.splice(progIdx, 0, '-vf', speedResult.videoFilter);
+      }
+      // Inject audio speed filter (if not muted)
+      if (!job.mute) {
+        const progIdx = args.indexOf('-progress');
+        args.splice(progIdx, 0, '-af', speedResult.audioFilter);
+      }
+      log('INFO', `Velocidad: ${job.speed}x`, job.id);
+    }
+  }
+
   const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
   job.ffmpegProcess = proc;
   job.state = 'converting';
 
   // Use trim duration if trimming, otherwise full video duration
-  const effectiveDuration = (trimArgs.length > 0 && job.trimStart && job.trimEnd)
+  let effectiveDuration = (trimArgs.length > 0 && job.trimStart && job.trimEnd)
     ? Math.max(0, parseFloat(job.trimEnd) - parseFloat(job.trimStart))
     : (job.metadata?.duration || 0);
+  // Adjust for speed
+  if (job.speed !== 1) effectiveDuration /= job.speed;
   const totalDurationUs = effectiveDuration * 1_000_000;
   const startTime = Date.now();
   let progressData = {};
@@ -697,6 +772,10 @@ export const server = http.createServer(async (req, res) => {
         fields.trimStart || null,
         fields.trimEnd || null,
         fields.trimDuration || null,
+        fields.mute || '0',
+        fields.speed || '1',
+        fields.targetSizeMB || null,
+        fields.videoFilter || 'none',
       );
       // Override the job id to match the one used for the file
       jobs.delete(job.id);

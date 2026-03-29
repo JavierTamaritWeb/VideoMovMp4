@@ -7,6 +7,7 @@ import {
   formatETA,
   PLATFORM_PRESETS,
   WATERMARK_FONTS,
+  VIDEO_FILTERS,
 } from './converterCore.js';
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -88,6 +89,8 @@ let textWmCustomX = null;
 let textWmCustomY = null;
 // Unified preview refs
 const wmPreview = $('#wmPreview');
+const wmOriginalBox = $('#wmOriginalBox');
+const wmOriginalCanvas = $('#wmOriginalCanvas');
 const wmPreviewBox = $('#wmPreviewBox');
 const wmPreviewCanvas = $('#wmPreviewCanvas');
 const wmPreviewImg = $('#wmPreviewImg');
@@ -96,6 +99,19 @@ let isDraggingWm = false;
 let dragWmTarget = null;
 let dragWmOffsetX = 0;
 let dragWmOffsetY = 0;
+// Filter ref
+const filterGrid = $('#filterGrid');
+let selectedFilter = 'none';
+// Mute ref
+const muteCheckbox = $('#muteCheckbox');
+// Speed refs
+const speedSlider = $('#speedSlider');
+const speedValue = $('#speedValue');
+// Target size refs
+const targetSizeCheckbox = $('#targetSizeCheckbox');
+const targetSizeControls = $('#targetSizeControls');
+const targetSizeInput = $('#targetSizeInput');
+const qualityGroup = $('.settings__group--quality');
 // Trim refs
 const trimCheckbox = $('#trimCheckbox');
 const trimControls = $('#trimControls');
@@ -148,6 +164,44 @@ trimEnd.addEventListener('input', () => {
     trimEnd.value = Math.min(videoDuration, parseFloat(trimStart.value) + 0.1);
   }
   updateTrimUI();
+});
+
+// ─── Speed ──────────────────────────────────────────────────────────────────
+speedSlider.addEventListener('input', () => {
+  speedValue.textContent = speedSlider.value + 'x';
+});
+
+// ─── Target Size ────────────────────────────────────────────────────────────
+targetSizeCheckbox.addEventListener('change', () => {
+  targetSizeControls.style.display = targetSizeCheckbox.checked ? '' : 'none';
+  qualityGroup.style.display = targetSizeCheckbox.checked ? 'none' : '';
+});
+
+for (const btn of document.querySelectorAll('.settings__targetsize-btn')) {
+  btn.addEventListener('click', () => {
+    targetSizeInput.value = btn.dataset.size;
+  });
+}
+
+// ─── Video Filter ───────────────────────────────────────────────────────────
+// Build filter buttons
+for (const [id, f] of Object.entries(VIDEO_FILTERS)) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'settings__filter-btn' + (id === 'none' ? ' settings__filter-btn--active' : '');
+  btn.dataset.filter = id;
+  btn.textContent = f.label;
+  filterGrid.appendChild(btn);
+}
+
+filterGrid.addEventListener('click', (e) => {
+  const btn = e.target.closest('.settings__filter-btn');
+  if (!btn) return;
+  selectedFilter = btn.dataset.filter;
+  for (const b of filterGrid.querySelectorAll('.settings__filter-btn')) {
+    b.classList.toggle('settings__filter-btn--active', b.dataset.filter === selectedFilter);
+  }
+  updateWmPreview();
 });
 
 // ─── Mirror → refresh previews ──────────────────────────────────────────────
@@ -270,10 +324,7 @@ function presetToPreviewCoords(preset, cW, cH, elW, elH) {
 }
 
 function updateWmPreview() {
-  const hasImg = watermarkCheckbox.checked && watermarkFile && videoPreview.videoWidth;
-  const hasTxt = textWmCheckbox.checked && textWmInput.value.trim() && videoPreview.videoWidth;
-
-  if (!hasImg && !hasTxt) {
+  if (!videoPreview.videoWidth) {
     wmPreview.hidden = true;
     return;
   }
@@ -281,18 +332,40 @@ function updateWmPreview() {
   wmPreview.hidden = false;
   const vw = videoPreview.videoWidth;
   const vh = videoPreview.videoHeight;
-  wmPreviewBox.style.aspectRatio = `${vw} / ${vh}`;
+  const ar = `${vw} / ${vh}`;
+  wmOriginalBox.style.aspectRatio = ar;
+  wmPreviewBox.style.aspectRatio = ar;
 
   const cW = wmPreviewBox.clientWidth;
   const cH = wmPreviewBox.clientHeight;
 
-  // Draw video frame (with mirror)
+  const hasImg = watermarkCheckbox.checked && watermarkFile;
+  const hasTxt = textWmCheckbox.checked && textWmInput.value.trim();
+
+  // Draw original (unmodified) frame
+  const oW = wmOriginalBox.clientWidth;
+  const oH = wmOriginalBox.clientHeight;
+  wmOriginalCanvas.width = oW;
+  wmOriginalCanvas.height = oH;
+  const origCtx = wmOriginalCanvas.getContext('2d');
+  if (videoPreview.readyState >= 2) {
+    origCtx.drawImage(videoPreview, 0, 0, oW, oH);
+  } else {
+    origCtx.fillStyle = '#111';
+    origCtx.fillRect(0, 0, oW, oH);
+  }
+
+  // Draw result frame (with mirror + filter)
   wmPreviewCanvas.width = cW;
   wmPreviewCanvas.height = cH;
   const ctx = wmPreviewCanvas.getContext('2d');
   if (mirrorCheckbox.checked) {
     ctx.translate(cW, 0);
     ctx.scale(-1, 1);
+  }
+  const cssFilter = VIDEO_FILTERS[selectedFilter]?.css;
+  if (cssFilter && cssFilter !== 'none') {
+    ctx.filter = cssFilter;
   }
   if (videoPreview.readyState >= 2) {
     ctx.drawImage(videoPreview, 0, 0, cW, cH);
@@ -301,6 +374,7 @@ function updateWmPreview() {
     ctx.fillRect(0, 0, cW, cH);
   }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.filter = 'none';
 
   // ── Image watermark layer ──
   if (hasImg) {
@@ -534,6 +608,12 @@ async function handleFile(file) {
     trimEnd.value = videoDuration;
     trimControls.style.display = trimCheckbox.checked ? '' : 'none';
     updateTrimUI();
+    // Force browser to decode the first frame
+    videoPreview.currentTime = 0.001;
+  }, { once: true });
+
+  // Render preview once first frame is decoded (after forced seek)
+  videoPreview.addEventListener('seeked', () => {
     updateWmPreview();
   }, { once: true });
 }
@@ -590,6 +670,16 @@ async function startConversion() {
   formData.append('preset', presetSelect.value);
   formData.append('platform', selectedPlatform);
   formData.append('mirror', mirrorCheckbox.checked ? '1' : '0');
+  formData.append('mute', muteCheckbox.checked ? '1' : '0');
+  if (selectedFilter !== 'none') {
+    formData.append('videoFilter', selectedFilter);
+  }
+  if (speedSlider.value !== '1') {
+    formData.append('speed', speedSlider.value);
+  }
+  if (targetSizeCheckbox.checked && targetSizeInput.value) {
+    formData.append('targetSizeMB', targetSizeInput.value);
+  }
   if (trimCheckbox.checked) {
     formData.append('trimStart', trimStart.value);
     formData.append('trimEnd', trimEnd.value);
@@ -833,6 +923,17 @@ function resetAll() {
   resInfo.textContent = '';
 
   mirrorCheckbox.checked = false;
+  muteCheckbox.checked = false;
+  selectedFilter = 'none';
+  for (const b of filterGrid.querySelectorAll('.settings__filter-btn')) {
+    b.classList.toggle('settings__filter-btn--active', b.dataset.filter === 'none');
+  }
+  speedSlider.value = 1;
+  speedValue.textContent = '1x';
+  targetSizeCheckbox.checked = false;
+  targetSizeControls.style.display = 'none';
+  targetSizeInput.value = 16;
+  qualityGroup.style.display = '';
 
   // Reset trim
   trimCheckbox.checked = false;

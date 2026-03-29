@@ -61,11 +61,16 @@ VideoMovMp4 es una aplicacion web de una sola pagina (SPA) que convierte archivo
 - Seleccion de resolucion (Original, 1080p, 720p, 480p) con proteccion contra ampliacion
 - Seleccion de preset de velocidad (ultrafast, fast, medium, slow)
 - Presets por plataforma: Web, TikTok (9:16), Instagram (Reels, Story, Feed 1:1/4:5/16:9), WhatsApp (960×540, baseline), YouTube (H.264 High) con ajustes automaticos de resolucion, aspect ratio, fps, bitrate y perfil H.264
+- Filtros de video: 12 filtros (B/N, sepia, invertido, vintage, viñeta, desenfoque, enfoque, brillo+, contraste+, saturacion+, desaturado) con preview en tiempo real
 - Recorte de video (trim): seleccion de inicio/fin con dual-range slider, FFmpeg `-ss`/`-t` con input seeking
+- Velocidad del video: 0.25x a 4x con FFmpeg `setpts` + `atempo` encadenado
 - Espejo horizontal (filtro `hflip` de FFmpeg)
+- Silenciar audio: elimina la pista de audio con `-an`
+- Comprimir a tamaño máximo: calcula bitrate automaticamente desde MB objetivo
+- Vista previa comparativa: panel Original vs Resultado lado a lado que refleja todos los cambios en tiempo real
 - Marca de agua de imagen: superpuesta con posicion (5 presets + arrastre libre), tamaño (5-50%), opacidad (10-100%). Usa `-filter_complex` con `overlay`
 - Marca de agua de texto: texto con fuente configurable (Montserrat Alternates regular/bold, Arial, Courier, Times), tamaño (12-200px), color (hex), opacidad, posicion (5 presets + arrastre libre). Usa FFmpeg `drawtext`
-- Preview unificado: una sola previsualizacion donde imagen y texto se ven superpuestos sobre el video, cada uno arrastrable independientemente. Refleja espejo horizontal (hflip) en tiempo real
+- Vista previa comparativa: panel Original vs Resultado lado a lado (grid 1fr 1fr). Original muestra el frame sin modificar. Resultado refleja todos los cambios en tiempo real: filtros, espejo, marcas de agua. Primer frame forzado via `currentTime=0.001` + evento `seeked`
 - Cancelacion de conversiones en curso
 - Recuperacion automatica de sesion tras refresh del navegador
 - Reconexion SSE automatica con backoff exponencial
@@ -201,7 +206,7 @@ VideoMobMp4/
 │
 ├── tests/
 │   └── unit/
-│       ├── converterCore.test.js  # 215 tests (funciones puras, presets, watermark, drawtext)
+│       ├── converterCore.test.js  # 274 tests (funciones puras, presets, watermark, drawtext)
 │       └── server.test.js         # 7 tests de integracion de la API
 │
 ├── e2e/
@@ -410,6 +415,10 @@ Esto previene ataques como `/../../../etc/passwd` o `/%2e%2e%2f%2e%2e%2fetc%2fpa
   - `platform` (string, opcional): "custom"|"web"|"tiktok"|"instagram"|"youtube", default "custom"
   - `igFormat` (string, opcional): "reels"|"story"|"feed"|"feed-vertical"|"feed-horizontal", default "reels" (solo aplica si platform="instagram")
   - `mirror` (string, opcional): "0"|"1", default "0" (espejo horizontal)
+  - `mute` (string, opcional): "0"|"1", default "0" (silenciar audio)
+  - `speed` (string, opcional): velocidad 0.25-4.0, default "1"
+  - `targetSizeMB` (string, opcional): tamaño maximo en MB para compresion automatica
+  - `videoFilter` (string, opcional): ID de filtro de VIDEO_FILTERS ("grayscale", "sepia", etc.), default "none"
   - `trimStart` (string, opcional): segundo de inicio del recorte
   - `trimEnd` (string, opcional): segundo de fin del recorte
   - `trimDuration` (string, opcional): duracion total del video original (para validacion)
@@ -624,6 +633,10 @@ Cada conversion se gestiona como un "job" almacenado en un `Map` en memoria.
   platform: "custom",          // "custom"|"web"|"tiktok"|"instagram"|"youtube"
   igFormat: "reels",           // "reels"|"story"|"feed"|"feed-vertical"|"feed-horizontal" (solo para Instagram)
   mirror: false,               // true = aplicar espejo horizontal (hflip)
+  mute: false,                 // true = eliminar audio (-an)
+  speed: 1,                    // Velocidad (0.25-4.0)
+  targetSizeMB: null,          // Tamaño maximo en MB (null = usar CRF)
+  videoFilter: "none",         // ID de filtro de VIDEO_FILTERS
   trimStart: null,             // Segundo de inicio del recorte (null si no hay)
   trimEnd: null,               // Segundo de fin del recorte
   trimDuration: null,          // Duracion total del video (para validacion)
@@ -1309,7 +1322,7 @@ Archivo de 237 lineas. SPA (Single Page Application) con estructura semantica HT
 | ID | Seccion | Visible cuando |
 |----|---------|---------------|
 | `panelUpload` | Zona de subida (drag & drop + file info) | `idle`, `configuring` |
-| `panelSettings` | Opciones de conversion (plataforma, calidad, espejo, marca de agua imagen, marca de agua texto, preview unificado, resolucion, preset) | `configuring` |
+| `panelSettings` | Opciones de conversion (plataforma, calidad, target size, trim, filtros, velocidad, espejo, mute, marcas de agua, preview comparativo, resolucion, preset) | `configuring` |
 | `panelProgress` | Barra de progreso + stats en tiempo real | `converting` |
 | `panelResult` | Preview + comparativa + descarga | `done` |
 | `panelError` | Mensaje de error + boton reintentar | `error` |
@@ -1592,7 +1605,7 @@ npm run test:watch    # Modo watch (vitest)
 
 ### 10.2 Tests de funciones puras (converterCore.test.js)
 
-Archivo: `tests/unit/converterCore.test.js` — 215 tests.
+Archivo: `tests/unit/converterCore.test.js` — 274 tests.
 
 | Grupo `describe` | Tests | Que verifica |
 |-------------------|-------|-------------|
@@ -1620,6 +1633,10 @@ Archivo: `tests/unit/converterCore.test.js` — 215 tests.
 | `buildTextWatermarkFilter` | 24 | Drawtext valido, font= vs fontfile=, posiciones, fontsize clamp, color valido/invalido, opacidad hex, fuente desconocida, texto vacio/null/undefined/espacios, escapado, integracion con filter chain |
 | `formatTimecode` | 9 | 0, 30, 90, 3661, decimales (5.5, 125.3), NaN, negativo, Infinity |
 | `buildTrimArgs` | 11 | Recorte parcial, timecodes correctos, start=0, video completo, start>=end, start negativo clamp, end>duracion clamp, valores no numericos, null/undefined, duracion 0/negativa, decimales |
+| `buildTargetSizeArgs` | 9 | 8MB/30s, 16MB/60s, bitrate imposible, duracion 0, MB negativo, NaN, sin audio, maxrate=vbr/bufsize=2x |
+| `buildSpeedFilter` | 11 | 1x→null, 2x, 0.5x, 4x encadenado, 0.25x encadenado, clamp, NaN, string, 1.0 exacto, tolerancia |
+| `VIDEO_FILTERS` | 11 | 12 filtros, labels, css field, none=null, filtros FFmpeg no vacios, colorchannelmixer, negate, css valores |
+| `getVideoFilter` | 14 | Cada filtro retorna valor correcto, none/unknown/null/undefined→null |
 
 **Helper de test:**
 ```javascript
@@ -1749,10 +1766,11 @@ Descripcion paso a paso de una conversion exitosa:
 4. USUARIO selecciona plataforma (ej. TikTok) o "Personalizado"
    - Si plataforma seleccionada: controles de resolucion/preset se ocultan
    - Ajusta calidad (75), opcionalmente activa espejo horizontal
-   - Opcionalmente activa recorte: ajusta inicio/fin con dual-range slider
+   - Selecciona filtro de video (B/N, sepia, etc.) — se refleja en la vista previa
+   - Opcionalmente activa recorte, velocidad, espejo, silenciar audio, comprimir a tamaño
    - Opcionalmente activa marca de agua imagen y/o texto
-   - Ambas se muestran en un preview unificado donde se pueden arrastrar independientemente
-   - El preview refleja el espejo horizontal en tiempo real
+   - La vista previa comparativa muestra Original vs Resultado con todos los cambios en tiempo real
+   - Las marcas de agua se pueden arrastrar en el panel Resultado
      ↓
 5. USUARIO pulsa "Convertir a MP4" (o Ctrl+Enter)
      ↓
@@ -1763,6 +1781,10 @@ Descripcion paso a paso de una conversion exitosa:
    - preset: "medium" (solo en modo Personalizado)
    - platform: "tiktok"
    - mirror: "0"
+   - mute: "0"
+   - speed: "2" (si != 1)
+   - targetSizeMB: "16" (si activo)
+   - videoFilter: "sepia" (si != none)
    - trimStart: "5" (si recorte activo)
    - trimEnd: "15"
    - trimDuration: "30"

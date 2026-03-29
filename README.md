@@ -6,7 +6,7 @@
 
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-required-007808?logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
-[![Vitest](https://img.shields.io/badge/Tests-222%20passed-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
+[![Vitest](https://img.shields.io/badge/Tests-285%20passed-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
 <br>
@@ -45,11 +45,15 @@ Todo el procesamiento se realiza en tu maquina con FFmpeg — ningun archivo sal
 
 - **MOV a MP4** con codecs H.264 (libx264) + AAC
 - **Presets por plataforma** — Web, TikTok, Instagram (Reels, Story, Feed 1:1/4:5/16:9), WhatsApp, YouTube. Cada preset ajusta automaticamente resolucion, aspect ratio, fps, bitrate y perfil H.264
+- **Filtros de vídeo** — 12 filtros: blanco y negro, sepia, invertido, vintage, viñeta, desenfoque, enfoque, brillo+, contraste+, saturacion+, desaturado. Selector de botones con preview en tiempo real
 - **Recorte de vídeo (trim)** — selecciona punto de inicio y fin con un dual-range slider antes de convertir. FFmpeg usa `-ss`/`-t` con input seeking para recorte instantaneo
+- **Velocidad** — slider 0.25x a 4x. FFmpeg `setpts` + `atempo` encadenado
 - **Espejo horizontal** — opcion para invertir el video horizontalmente (filtro `hflip`)
+- **Silenciar audio** — toggle para eliminar la pista de audio (`-an`)
+- **Comprimir a tamaño máximo** — input en MB con presets (8/16/25/50 MB). Calcula bitrate automaticamente
 - **Marca de agua (imagen)** — superpone una imagen (PNG, JPG, WebP, SVG) con posicion (5 presets + arrastre libre), tamaño (5-50%) y opacidad (10-100%)
 - **Marca de agua (texto)** — superpone texto con fuente configurable (Montserrat Alternates, Arial, Courier, Times), tamaño (12-200px), color (selector hex), opacidad (10-100%) y posicion (5 presets + arrastre libre)
-- **Preview unificado** — una sola previsualizacion donde imagen y texto se ven superpuestos sobre el video, cada uno arrastrable independientemente. Refleja el espejo horizontal en tiempo real
+- **Vista previa comparativa** — panel Original vs Resultado lado a lado. El panel de resultado refleja en tiempo real todos los cambios: filtros, espejo, marcas de agua. Las marcas de agua son arrastrables en el panel de resultado
 - **`-movflags +faststart`** — el MP4 se reproduce en el navegador sin descargar completo
 - **`-pix_fmt yuv420p`** — compatibilidad maxima con reproductores y dispositivos
 - **Calidad ajustable** — slider de 1 a 100 con mapeo CRF perceptual (no lineal)
@@ -157,11 +161,15 @@ JOB_TTL_MIN=10            # Minutos que un job completado permanece disponible
   - **Instagram** ofrece sub-selector: Reels (9:16), Story (9:16), Feed cuadrado (1:1), Feed vertical (4:5), Feed horizontal (16:9)
   - **Personalizado** permite controlar todos los ajustes manualmente (comportamiento clasico)
 - **Calidad** — slider de 1 a 100 (default 75). Muestra el valor CRF calculado en tiempo real. Disponible en todos los modos
+- **Filtro de vídeo** — selector de botones (12 filtros). El efecto se ve en la vista previa comparativa
 - **Recortar** — toggle para activar, dual-range slider con inicio/fin y duracion seleccionada en formato MM:SS
+- **Velocidad** — slider 0.25x a 4x
 - **Espejo horizontal** — toggle para invertir el video horizontalmente
+- **Silenciar audio** — toggle
+- **Comprimir a tamaño** — toggle + input MB con presets rapidos (8/16/25/50 MB). Sustituye el control de calidad
 - **Marca de agua (imagen)** — toggle, selector de imagen, posicion (5 presets o arrastre libre en el preview), slider de tamaño (5-50%), slider de opacidad (10-100%)
 - **Marca de agua (texto)** — toggle, campo de texto, selector de fuente (Montserrat Alternates regular/bold, Arial, Courier, Times), color picker, slider de tamaño (12-200px), slider de opacidad (10-100%), posicion (5 presets o arrastre libre en el preview)
-- Ambas marcas se visualizan en un **preview unificado** donde se pueden arrastrar independientemente
+- Ambas marcas se visualizan en la **vista previa comparativa** (panel Resultado) donde se pueden arrastrar independientemente
 - **Resolucion** — dropdown (solo visible en modo Personalizado). Si seleccionas una resolucion mayor a la del video, se mantiene la original
 - **Preset de velocidad** — velocidad de codificacion (solo visible en modo Personalizado). "Equilibrado" es el default
 
@@ -546,7 +554,7 @@ POST /api/convert
 ## Tests
 
 ```bash
-npm test              # Ejecutar los 222 tests
+npm test              # Ejecutar los 285 tests
 npm run test:watch    # Tests en modo watch
 npm run create-fixture # Generar videos de prueba con FFmpeg
 ```
@@ -555,8 +563,8 @@ npm run create-fixture # Generar videos de prueba con FFmpeg
 
 | Archivo | Tests | Que verifica |
 |---------|:-----:|-------------|
-| `converterCore.test.js` | 215 | `validateMovExtension` (6), `validateMovMagicBytes` (6), `qualityToCRF` (7), `buildResolutionArgs` (5), `formatFileSize` (6), `formatDuration` (5), `formatETA` (4), `sanitizeFilename` (5), `calculateSavings` (3), `parseFFprobeOutput` (4), `PLATFORM_PRESETS` (3), `getPlatformPreset` (2), `buildVideoFilterChain` (9), `buildPlatformArgs` (8), `WATERMARK_POSITIONS` (7), `WATERMARK_SIZES` (2), `buildWatermarkFilter` (46), `parseWatermarkPosition` (15), `buildWatermarkFilter custom` (5), `WATERMARK_FONTS` (4), `escapeDrawtext` (9), `buildTextWatermarkFilter` (24), `formatTimecode` (9), `buildTrimArgs` (11) |
-| `server.test.js` | 7 | Health check, upload sin archivo, job inexistente, cancel inexistente, archivos estaticos, path traversal, 404 |
+| `converterCore.test.js` | 274 | `validateMovExtension` (6), `validateMovMagicBytes` (6), `qualityToCRF` (7), `buildResolutionArgs` (5), `formatFileSize` (6), `formatDuration` (5), `formatETA` (4), `sanitizeFilename` (5), `calculateSavings` (3), `parseFFprobeOutput` (4), `PLATFORM_PRESETS` (3), `getPlatformPreset` (2), `buildVideoFilterChain` (9), `buildPlatformArgs` (8), `WATERMARK_POSITIONS` (7), `WATERMARK_SIZES` (2), `buildWatermarkFilter` (46), `parseWatermarkPosition` (15), `buildWatermarkFilter custom` (5), `WATERMARK_FONTS` (4), `escapeDrawtext` (9), `buildTextWatermarkFilter` (24), `formatTimecode` (9), `buildTrimArgs` (11), `buildTargetSizeArgs` (9), `buildSpeedFilter` (11), `VIDEO_FILTERS` (11), `getVideoFilter` (14) |
+| `server.test.js` | 11 | Health check, upload sin archivo, job inexistente, cancel inexistente, archivos estaticos, path traversal, 404 |
 
 ### Fixtures de prueba
 
@@ -593,7 +601,7 @@ El script `generate-fixture.sh` crea 4 archivos de prueba con FFmpeg:
 | `./run_app.sh` | Arranca servidor con verificacion de dependencias y port scanning |
 | `npm start` | Servidor en puerto por defecto (5173) |
 | `npm run dev` | Servidor con `--watch` (reinicia al guardar) |
-| `npm test` | Ejecutar 222 tests (Vitest) |
+| `npm test` | Ejecutar 285 tests (Vitest) |
 | `npm run test:watch` | Tests en modo watch |
 | `npm run create-fixture` | Generar videos MOV de prueba |
 | `NO_OPEN=1 npm start` | Arrancar sin abrir el navegador |

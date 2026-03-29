@@ -23,6 +23,10 @@ import {
   buildTextWatermarkFilter,
   formatTimecode,
   buildTrimArgs,
+  buildTargetSizeArgs,
+  buildSpeedFilter,
+  VIDEO_FILTERS,
+  getVideoFilter,
 } from '../../src/js/converterCore.js';
 
 // Helper: build fake magic bytes
@@ -1236,5 +1240,206 @@ describe('buildTrimArgs', () => {
     const args = buildTrimArgs(2.5, 8.7, 30);
     expect(args[1]).toBe('00:00:02.5');
     expect(args[3]).toContain('00:00:06');
+  });
+});
+
+// ─── Target Size ────────────────────────────────────────────────────────────
+
+describe('buildTargetSizeArgs', () => {
+  it('8MB en vídeo de 30s → retorna args de bitrate', () => {
+    const args = buildTargetSizeArgs(8, 30, 128);
+    expect(args).not.toBeNull();
+    expect(args).toHaveLength(6);
+    expect(args[0]).toBe('-b:v');
+    expect(args[2]).toBe('-maxrate');
+    expect(args[4]).toBe('-bufsize');
+  });
+  it('bitrate calculado correctamente para 8MB/30s', () => {
+    const args = buildTargetSizeArgs(8, 30, 128);
+    // totalBits = 8 * 8 * 1024 * 1024 = 67108864
+    // audioBits = 128 * 1000 * 30 = 3840000
+    // videoBitrate = (67108864 - 3840000) / 30 / 1000 = 2108
+    expect(args[1]).toBe('2108k');
+  });
+  it('16MB en vídeo de 60s', () => {
+    const args = buildTargetSizeArgs(16, 60, 128);
+    expect(args).not.toBeNull();
+    expect(parseInt(args[1])).toBeGreaterThan(0);
+  });
+  it('tamaño muy pequeño → videoBitrate < 100 → null', () => {
+    // 0.1MB en 60s con 128k audio → imposible
+    expect(buildTargetSizeArgs(0.1, 60, 128)).toBeNull();
+  });
+  it('duración 0 → null', () => {
+    expect(buildTargetSizeArgs(8, 0, 128)).toBeNull();
+  });
+  it('MB negativo → null', () => {
+    expect(buildTargetSizeArgs(-5, 30, 128)).toBeNull();
+  });
+  it('NaN → null', () => {
+    expect(buildTargetSizeArgs(NaN, 30, 128)).toBeNull();
+    expect(buildTargetSizeArgs(8, NaN, 128)).toBeNull();
+  });
+  it('sin audio (0 abr) → todo el bitrate para vídeo', () => {
+    const args = buildTargetSizeArgs(8, 30, 0);
+    const argsWithAudio = buildTargetSizeArgs(8, 30, 128);
+    expect(parseInt(args[1])).toBeGreaterThan(parseInt(argsWithAudio[1]));
+  });
+  it('maxrate = videoBitrate, bufsize = 2x', () => {
+    const args = buildTargetSizeArgs(8, 30, 128);
+    const vbr = parseInt(args[1]);
+    expect(parseInt(args[3])).toBe(vbr);
+    expect(parseInt(args[5])).toBe(vbr * 2);
+  });
+});
+
+// ─── Speed ──────────────────────────────────────────────────────────────────
+
+describe('buildSpeedFilter', () => {
+  it('1x → null (sin cambio)', () => {
+    expect(buildSpeedFilter(1)).toBeNull();
+  });
+  it('2x → setpts=0.5*PTS + atempo=2.0', () => {
+    const result = buildSpeedFilter(2);
+    expect(result).not.toBeNull();
+    expect(result.videoFilter).toContain('setpts=0.5');
+    expect(result.videoFilter).toContain('*PTS');
+    expect(result.audioFilter).toContain('atempo=2.0');
+  });
+  it('0.5x → setpts=2*PTS + atempo=0.5', () => {
+    const result = buildSpeedFilter(0.5);
+    expect(result.videoFilter).toContain('setpts=2.0');
+    expect(result.audioFilter).toContain('atempo=0.5');
+  });
+  it('4x → atempo encadenado (2.0,2.0)', () => {
+    const result = buildSpeedFilter(4);
+    expect(result.videoFilter).toContain('setpts=0.25');
+    expect(result.audioFilter).toContain('atempo=2.0');
+    expect(result.audioFilter.split('atempo').length - 1).toBeGreaterThanOrEqual(2);
+  });
+  it('0.25x → atempo encadenado (0.5,0.5)', () => {
+    const result = buildSpeedFilter(0.25);
+    expect(result.videoFilter).toContain('setpts=4.0');
+    expect(result.audioFilter).toContain('atempo=0.5');
+    expect(result.audioFilter.split('atempo').length - 1).toBeGreaterThanOrEqual(2);
+  });
+  it('valor fuera de rango se clampea (0.1 → 0.25)', () => {
+    const result = buildSpeedFilter(0.1);
+    expect(result.videoFilter).toContain('setpts=4.0');
+  });
+  it('valor fuera de rango se clampea (10 → 4)', () => {
+    const result = buildSpeedFilter(10);
+    expect(result.videoFilter).toContain('setpts=0.25');
+  });
+  it('NaN → null', () => {
+    expect(buildSpeedFilter(NaN)).toBeNull();
+  });
+  it('string "2" → funciona', () => {
+    const result = buildSpeedFilter('2');
+    expect(result).not.toBeNull();
+    expect(result.videoFilter).toContain('setpts=0.5');
+  });
+  it('1.0 exacto → null', () => {
+    expect(buildSpeedFilter(1.0)).toBeNull();
+  });
+  it('0.99 → null (dentro de tolerancia)', () => {
+    expect(buildSpeedFilter(0.995)).toBeNull();
+  });
+});
+
+// ─── Video Filters ──────────────────────────────────────────────────────────
+
+describe('VIDEO_FILTERS', () => {
+  it('contiene los 12 filtros esperados', () => {
+    const keys = Object.keys(VIDEO_FILTERS);
+    expect(keys).toHaveLength(12);
+    expect(keys).toEqual(expect.arrayContaining([
+      'none', 'grayscale', 'sepia', 'invert', 'vintage',
+      'vignette', 'blur', 'sharpen', 'bright', 'contrast',
+      'saturate', 'desaturate',
+    ]));
+  });
+  it('cada filtro tiene label y css', () => {
+    for (const f of Object.values(VIDEO_FILTERS)) {
+      expect(typeof f.label).toBe('string');
+      expect(f.label.length).toBeGreaterThan(0);
+      expect(typeof f.css).toBe('string');
+    }
+  });
+  it('none tiene filter null', () => {
+    expect(VIDEO_FILTERS.none.filter).toBeNull();
+  });
+  it('todos los demás tienen filter string no vacío', () => {
+    for (const [key, f] of Object.entries(VIDEO_FILTERS)) {
+      if (key === 'none') continue;
+      expect(typeof f.filter).toBe('string');
+      expect(f.filter.length).toBeGreaterThan(0);
+    }
+  });
+  it('grayscale usa colorchannelmixer', () => {
+    expect(VIDEO_FILTERS.grayscale.filter).toContain('colorchannelmixer');
+  });
+  it('sepia usa colorchannelmixer', () => {
+    expect(VIDEO_FILTERS.sepia.filter).toContain('colorchannelmixer');
+  });
+  it('invert usa negate', () => {
+    expect(VIDEO_FILTERS.invert.filter).toBe('negate');
+  });
+  it('css de grayscale es grayscale(1)', () => {
+    expect(VIDEO_FILTERS.grayscale.css).toBe('grayscale(1)');
+  });
+  it('css de sepia es sepia(1)', () => {
+    expect(VIDEO_FILTERS.sepia.css).toBe('sepia(1)');
+  });
+  it('css de invert es invert(1)', () => {
+    expect(VIDEO_FILTERS.invert.css).toBe('invert(1)');
+  });
+  it('css de none es "none"', () => {
+    expect(VIDEO_FILTERS.none.css).toBe('none');
+  });
+});
+
+describe('getVideoFilter', () => {
+  it('grayscale → retorna el filtro correcto', () => {
+    expect(getVideoFilter('grayscale')).toContain('colorchannelmixer');
+  });
+  it('sepia → retorna el filtro correcto', () => {
+    expect(getVideoFilter('sepia')).toContain('colorchannelmixer');
+  });
+  it('invert → negate', () => {
+    expect(getVideoFilter('invert')).toBe('negate');
+  });
+  it('vintage → curves=vintage', () => {
+    expect(getVideoFilter('vintage')).toBe('curves=vintage');
+  });
+  it('blur → boxblur', () => {
+    expect(getVideoFilter('blur')).toContain('boxblur');
+  });
+  it('sharpen → unsharp', () => {
+    expect(getVideoFilter('sharpen')).toContain('unsharp');
+  });
+  it('bright → eq=brightness', () => {
+    expect(getVideoFilter('bright')).toContain('brightness');
+  });
+  it('contrast → eq=contrast', () => {
+    expect(getVideoFilter('contrast')).toContain('contrast');
+  });
+  it('saturate → eq=saturation=1.5', () => {
+    expect(getVideoFilter('saturate')).toContain('saturation=1.5');
+  });
+  it('desaturate → eq=saturation=0.3', () => {
+    expect(getVideoFilter('desaturate')).toContain('saturation=0.3');
+  });
+  it('none → null', () => {
+    expect(getVideoFilter('none')).toBeNull();
+  });
+  it('desconocido → null', () => {
+    expect(getVideoFilter('unknown')).toBeNull();
+  });
+  it('null → null', () => {
+    expect(getVideoFilter(null)).toBeNull();
+  });
+  it('undefined → null', () => {
+    expect(getVideoFilter(undefined)).toBeNull();
   });
 });
