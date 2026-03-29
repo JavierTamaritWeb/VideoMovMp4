@@ -316,6 +316,47 @@ export const PLATFORM_PRESETS = {
   },
 };
 
+export function computePreviewCrop(platformId, igFormat, inputW, inputH) {
+  if (!inputW || !inputH) return null;
+  const preset = PLATFORM_PRESETS[platformId] || PLATFORM_PRESETS.custom;
+
+  let targetAR = null;
+  if (preset.id === 'instagram') {
+    switch (igFormat) {
+      case 'feed':            targetAR = 1; break;
+      case 'feed-vertical':   targetAR = 4 / 5; break;
+      case 'feed-horizontal': targetAR = 16 / 9; break;
+      case 'story':           targetAR = 9 / 16; break;
+      default:                targetAR = 9 / 16; break; // reels
+    }
+  } else if (preset.aspectRatio) {
+    const [arW, arH] = preset.aspectRatio.split(':').map(Number);
+    targetAR = arW / arH;
+  }
+
+  if (targetAR === null) return null;
+
+  const inputAR = inputW / inputH;
+  if (Math.abs(inputAR - targetAR) < 0.01) return null; // already matches
+
+  let sx, sy, sw, sh;
+  if (inputAR > targetAR) {
+    // wider → crop sides
+    sh = inputH;
+    sw = Math.round(inputH * targetAR);
+    sx = Math.round((inputW - sw) / 2);
+    sy = 0;
+  } else {
+    // taller → crop top/bottom
+    sw = inputW;
+    sh = Math.round(inputW / targetAR);
+    sx = 0;
+    sy = Math.round((inputH - sh) / 2);
+  }
+
+  return { sx, sy, sw, sh, outputAR: targetAR };
+}
+
 export function getPlatformPreset(platformId) {
   return PLATFORM_PRESETS[platformId] || PLATFORM_PRESETS.custom;
 }

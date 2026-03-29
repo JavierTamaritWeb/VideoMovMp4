@@ -27,6 +27,7 @@ import {
   buildSpeedFilter,
   VIDEO_FILTERS,
   getVideoFilter,
+  computePreviewCrop,
 } from '../../src/js/converterCore.js';
 
 // Helper: build fake magic bytes
@@ -1477,8 +1478,76 @@ describe('buildTargetSizeArgs (container overhead)', () => {
   it('resultado es menor que sin overhead (2% menos)', () => {
     const args = buildTargetSizeArgs(8, 30, 128);
     const bitrate = parseInt(args[1]);
-    // Sin overhead sería 2108, con overhead debe ser menor
     expect(bitrate).toBeLessThan(2108);
     expect(bitrate).toBeGreaterThan(2000);
+  });
+});
+
+describe('computePreviewCrop', () => {
+  it('custom → null (sin crop)', () => {
+    expect(computePreviewCrop('custom', null, 1920, 1080)).toBeNull();
+  });
+  it('web → null (sin aspectRatio)', () => {
+    expect(computePreviewCrop('web', null, 1920, 1080)).toBeNull();
+  });
+  it('youtube → null (sin aspectRatio)', () => {
+    expect(computePreviewCrop('youtube', null, 1920, 1080)).toBeNull();
+  });
+  it('whatsapp → null (sin aspectRatio)', () => {
+    expect(computePreviewCrop('whatsapp', null, 960, 540)).toBeNull();
+  });
+  it('tiktok con landscape 1920×1080 → crop 9:16', () => {
+    const c = computePreviewCrop('tiktok', null, 1920, 1080);
+    expect(c).not.toBeNull();
+    expect(c.outputAR).toBeCloseTo(9/16, 1);
+    expect(c.sw).toBeLessThan(1920); // cropped width
+    expect(c.sh).toBe(1080); // full height
+    expect(c.sx).toBeGreaterThan(0); // centered
+    expect(c.sy).toBe(0);
+  });
+  it('tiktok con portrait 1080×1920 → null (ya encaja)', () => {
+    expect(computePreviewCrop('tiktok', null, 1080, 1920)).toBeNull();
+  });
+  it('instagram reels con landscape → crop 9:16', () => {
+    const c = computePreviewCrop('instagram', 'reels', 1920, 1080);
+    expect(c).not.toBeNull();
+    expect(c.outputAR).toBeCloseTo(9/16, 1);
+  });
+  it('instagram story → misma salida que reels', () => {
+    const reels = computePreviewCrop('instagram', 'reels', 1920, 1080);
+    const story = computePreviewCrop('instagram', 'story', 1920, 1080);
+    expect(story.sx).toBe(reels.sx);
+    expect(story.sw).toBe(reels.sw);
+  });
+  it('instagram feed → crop 1:1', () => {
+    const c = computePreviewCrop('instagram', 'feed', 1920, 1080);
+    expect(c).not.toBeNull();
+    expect(c.outputAR).toBeCloseTo(1, 1);
+    expect(c.sw).toBe(c.sh); // cuadrado
+  });
+  it('instagram feed-vertical → crop 4:5', () => {
+    const c = computePreviewCrop('instagram', 'feed-vertical', 1920, 1080);
+    expect(c).not.toBeNull();
+    expect(c.outputAR).toBeCloseTo(4/5, 1);
+  });
+  it('instagram feed-horizontal → crop 16:9', () => {
+    // Input is already 16:9 → null
+    expect(computePreviewCrop('instagram', 'feed-horizontal', 1920, 1080)).toBeNull();
+  });
+  it('instagram feed-horizontal con portrait → crop 16:9', () => {
+    const c = computePreviewCrop('instagram', 'feed-horizontal', 1080, 1920);
+    expect(c).not.toBeNull();
+    expect(c.outputAR).toBeCloseTo(16/9, 1);
+  });
+  it('crop está centrado', () => {
+    const c = computePreviewCrop('instagram', 'feed', 1920, 1080);
+    // 1:1 crop from 1920×1080 → sw=1080, sx=(1920-1080)/2=420
+    expect(c.sx).toBe(420);
+    expect(c.sy).toBe(0);
+    expect(c.sw).toBe(1080);
+    expect(c.sh).toBe(1080);
+  });
+  it('input 0×0 → null', () => {
+    expect(computePreviewCrop('tiktok', null, 0, 0)).toBeNull();
   });
 });

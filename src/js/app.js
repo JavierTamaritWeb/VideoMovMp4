@@ -8,6 +8,7 @@ import {
   PLATFORM_PRESETS,
   WATERMARK_FONTS,
   VIDEO_FILTERS,
+  computePreviewCrop,
 } from './converterCore.js';
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -226,6 +227,12 @@ platformGrid.addEventListener('change', (e) => {
 
   const preset = PLATFORM_PRESETS[selectedPlatform];
   platformHint.textContent = isCustom ? '' : preset.description;
+  updateWmPreview();
+});
+
+// Update preview when Instagram format changes
+document.querySelectorAll('input[name="igFormat"]').forEach(radio => {
+  radio.addEventListener('change', () => updateWmPreview());
 });
 
 // ─── Watermark (image) ──────────────────────────────────────────────────────
@@ -335,9 +342,16 @@ function updateWmPreview() {
   wmPreview.hidden = false;
   const vw = videoPreview.videoWidth;
   const vh = videoPreview.videoHeight;
-  const ar = `${vw} / ${vh}`;
-  wmOriginalBox.style.aspectRatio = ar;
-  wmPreviewBox.style.aspectRatio = ar;
+
+  // Compute crop for platform preset
+  const igFormat = document.querySelector('input[name="igFormat"]:checked')?.value || 'reels';
+  const crop = computePreviewCrop(selectedPlatform, igFormat, vw, vh);
+
+  // Original always shows full frame
+  wmOriginalBox.style.aspectRatio = `${vw} / ${vh}`;
+  // Result shows cropped aspect ratio
+  const resultAR = crop ? crop.outputAR : vw / vh;
+  wmPreviewBox.style.aspectRatio = `${resultAR}`;
 
   const cW = wmPreviewBox.clientWidth;
   const cH = wmPreviewBox.clientHeight;
@@ -358,7 +372,7 @@ function updateWmPreview() {
     origCtx.fillRect(0, 0, oW, oH);
   }
 
-  // Draw result frame (with mirror + filter)
+  // Draw result frame (with crop + mirror + filter)
   wmPreviewCanvas.width = cW;
   wmPreviewCanvas.height = cH;
   const ctx = wmPreviewCanvas.getContext('2d');
@@ -371,7 +385,11 @@ function updateWmPreview() {
     ctx.filter = cssFilter;
   }
   if (videoPreview.readyState >= 2) {
-    ctx.drawImage(videoPreview, 0, 0, cW, cH);
+    if (crop) {
+      ctx.drawImage(videoPreview, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, cW, cH);
+    } else {
+      ctx.drawImage(videoPreview, 0, 0, cW, cH);
+    }
   } else {
     ctx.fillStyle = '#111';
     ctx.fillRect(0, 0, cW, cH);
