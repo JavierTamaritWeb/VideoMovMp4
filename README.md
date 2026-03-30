@@ -6,7 +6,7 @@
 
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-required-007808?logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
-[![Vitest](https://img.shields.io/badge/Tests-285%20passed-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
+[![Vitest](https://img.shields.io/badge/Tests-310%20passed-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
 <br>
@@ -53,7 +53,12 @@ Todo el procesamiento se realiza en tu maquina con FFmpeg — ningun archivo sal
 - **Comprimir a tamaño máximo** — input en MB con presets (8/16/25/50 MB). Calcula bitrate automaticamente
 - **Marca de agua (imagen)** — superpone una imagen (PNG, JPG, WebP, SVG) con posicion (5 presets + arrastre libre), tamaño (5-50%) y opacidad (10-100%)
 - **Marca de agua (texto)** — superpone texto con fuente configurable (Montserrat Alternates, Arial, Courier, Times), tamaño (12-200px), color (selector hex), opacidad (10-100%) y posicion (5 presets + arrastre libre)
-- **Vista previa comparativa** — panel Original vs Resultado lado a lado. El panel de resultado refleja en tiempo real todos los cambios: filtros, espejo, marcas de agua. Las marcas de agua son arrastrables en el panel de resultado
+- **Vista previa comparativa** — panel Original vs Resultado lado a lado. El panel de resultado refleja en tiempo real todos los cambios: filtros, espejo, marcas de agua, crop de plataforma. Las marcas de agua son arrastrables en el panel de resultado
+- **Preview reproducible** — boton Play/Pause para ver la vista previa animada con todos los efectos aplicados en movimiento
+- **Captura de fotograma** — boton para exportar el canvas del resultado como PNG descargable con todos los efectos
+- **Chips de cambios activos** — barra de chips arriba del boton "Convertir" que muestra todos los ajustes activos (plataforma, filtro, espejo, mute, velocidad, recorte, etc.). Cada chip tiene ✕ para desactivar ese ajuste individualmente sin orden
+- **Historial de conversiones** — lista persistente (localStorage, max 20) con nombre, plataforma, ahorro y fecha de cada conversion completada
+- **Presets de usuario** — guardar/cargar combinaciones de ajustes como presets personalizados en localStorage. Boton "Aplicar" restaura todos los ajustes
 - **`-movflags +faststart`** — el MP4 se reproduce en el navegador sin descargar completo
 - **`-pix_fmt yuv420p`** — compatibilidad maxima con reproductores y dispositivos
 - **Calidad ajustable** — slider de 1 a 100 con mapeo CRF perceptual (no lineal)
@@ -228,7 +233,7 @@ curl http://localhost:5173/api/health
   "uptime": 120,
   "activeJobs": 0,
   "totalJobs": 3,
-  "version": "1.1.2"
+  "version": "1.2.2"
 }
 ```
 
@@ -554,7 +559,7 @@ POST /api/convert
 ## Tests
 
 ```bash
-npm test              # Ejecutar los 285 tests
+npm test              # Ejecutar los 310 tests
 npm run test:watch    # Tests en modo watch
 npm run create-fixture # Generar videos de prueba con FFmpeg
 ```
@@ -564,7 +569,8 @@ npm run create-fixture # Generar videos de prueba con FFmpeg
 | Archivo | Tests | Que verifica |
 |---------|:-----:|-------------|
 | `converterCore.test.js` | 274 | `validateMovExtension` (6), `validateMovMagicBytes` (6), `qualityToCRF` (7), `buildResolutionArgs` (5), `formatFileSize` (6), `formatDuration` (5), `formatETA` (4), `sanitizeFilename` (5), `calculateSavings` (3), `parseFFprobeOutput` (4), `PLATFORM_PRESETS` (3), `getPlatformPreset` (2), `buildVideoFilterChain` (9), `buildPlatformArgs` (8), `WATERMARK_POSITIONS` (7), `WATERMARK_SIZES` (2), `buildWatermarkFilter` (46), `parseWatermarkPosition` (15), `buildWatermarkFilter custom` (5), `WATERMARK_FONTS` (4), `escapeDrawtext` (9), `buildTextWatermarkFilter` (24), `formatTimecode` (9), `buildTrimArgs` (11), `buildTargetSizeArgs` (9), `buildSpeedFilter` (11), `VIDEO_FILTERS` (11), `getVideoFilter` (14) |
-| `server.test.js` | 11 | Health check, upload sin archivo, job inexistente, cancel inexistente, archivos estaticos, path traversal, 404 |
+| `server.test.js` | 11 |
+| `e2e.test.js` | 5 | Conversion real MOV→MP4, verificacion ffprobe (H.264, sin audio con mute), filtro sepia, mirror | Health check, upload sin archivo, job inexistente, cancel inexistente, archivos estaticos, path traversal, 404 |
 
 ### Fixtures de prueba
 
@@ -601,7 +607,7 @@ El script `generate-fixture.sh` crea 4 archivos de prueba con FFmpeg:
 | `./run_app.sh` | Arranca servidor con verificacion de dependencias y port scanning |
 | `npm start` | Servidor en puerto por defecto (5173) |
 | `npm run dev` | Servidor con `--watch` (reinicia al guardar) |
-| `npm test` | Ejecutar 285 tests (Vitest) |
+| `npm test` | Ejecutar 310 tests (Vitest) |
 | `npm run test:watch` | Tests en modo watch |
 | `npm run create-fixture` | Generar videos MOV de prueba |
 | `NO_OPEN=1 npm start` | Arrancar sin abrir el navegador |

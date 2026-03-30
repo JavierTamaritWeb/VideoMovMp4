@@ -316,23 +316,27 @@ export const PLATFORM_PRESETS = {
   },
 };
 
+export function resolveTargetAspectRatio(preset, igFormat) {
+  if (preset.id === 'instagram') {
+    switch (igFormat) {
+      case 'feed':            return 1;
+      case 'feed-vertical':   return 4 / 5;
+      case 'feed-horizontal': return 16 / 9;
+      case 'story':           return 9 / 16;
+      default:                return 9 / 16;
+    }
+  }
+  if (preset.aspectRatio) {
+    const [arW, arH] = preset.aspectRatio.split(':').map(Number);
+    return arW / arH;
+  }
+  return null;
+}
+
 export function computePreviewCrop(platformId, igFormat, inputW, inputH) {
   if (!inputW || !inputH) return null;
   const preset = PLATFORM_PRESETS[platformId] || PLATFORM_PRESETS.custom;
-
-  let targetAR = null;
-  if (preset.id === 'instagram') {
-    switch (igFormat) {
-      case 'feed':            targetAR = 1; break;
-      case 'feed-vertical':   targetAR = 4 / 5; break;
-      case 'feed-horizontal': targetAR = 16 / 9; break;
-      case 'story':           targetAR = 9 / 16; break;
-      default:                targetAR = 9 / 16; break; // reels
-    }
-  } else if (preset.aspectRatio) {
-    const [arW, arH] = preset.aspectRatio.split(':').map(Number);
-    targetAR = arW / arH;
-  }
+  const targetAR = resolveTargetAspectRatio(preset, igFormat);
 
   if (targetAR === null) return null;
 
@@ -368,28 +372,14 @@ function makeEven(n) {
 export function buildVideoFilterChain(preset, inputWidth, inputHeight, igFormat) {
   if (!inputWidth || !inputHeight) return '';
 
-  let targetAR = null;
+  const targetAR = resolveTargetAspectRatio(preset, igFormat);
   let maxW = preset.maxWidth;
   let maxH = preset.maxHeight;
 
-  // Instagram format overrides
+  // Instagram format max dimension overrides
   if (preset.id === 'instagram') {
-    switch (igFormat) {
-      case 'feed':
-        targetAR = 1; maxW = 1080; maxH = 1080; break;
-      case 'feed-vertical':
-        targetAR = 4 / 5; maxW = 1080; maxH = 1350; break;
-      case 'feed-horizontal':
-        targetAR = 16 / 9; maxW = 1080; maxH = 608; break;
-      case 'story':
-        targetAR = 9 / 16; maxW = 1080; maxH = 1920; break;
-      default: // reels — uses preset.aspectRatio (9:16)
-        break;
-    }
-  }
-  if (targetAR === null && preset.aspectRatio) {
-    const [arW, arH] = preset.aspectRatio.split(':').map(Number);
-    targetAR = arW / arH;
+    const igDims = { 'feed': [1080, 1080], 'feed-vertical': [1080, 1350], 'feed-horizontal': [1080, 608], 'story': [1080, 1920] };
+    if (igDims[igFormat]) { [maxW, maxH] = igDims[igFormat]; }
   }
 
   const filters = [];

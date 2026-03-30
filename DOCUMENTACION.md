@@ -1,4 +1,4 @@
-# VideoMovMp4 v1.1.2 — Documentacion tecnica completa
+# VideoMovMp4 v1.2.2 — Documentacion tecnica completa
 
 ---
 
@@ -70,7 +70,12 @@ VideoMovMp4 es una aplicacion web de una sola pagina (SPA) que convierte archivo
 - Vista previa comparativa: panel Original vs Resultado lado a lado que refleja todos los cambios en tiempo real
 - Marca de agua de imagen: superpuesta con posicion (5 presets + arrastre libre), tamaño (5-50%), opacidad (10-100%). Usa `-filter_complex` con `overlay`
 - Marca de agua de texto: texto con fuente configurable (Montserrat Alternates regular/bold, Arial, Courier, Times), tamaño (12-200px), color (hex), opacidad, posicion (5 presets + arrastre libre). Usa FFmpeg `drawtext`
-- Vista previa comparativa: panel Original vs Resultado lado a lado (grid 1fr 1fr). Original muestra el frame sin modificar. Resultado refleja todos los cambios en tiempo real: filtros, espejo, marcas de agua. Primer frame forzado via `currentTime=0.001` + evento `seeked`
+- Vista previa comparativa: panel Original vs Resultado lado a lado (grid 1fr 1fr). Original muestra el frame sin modificar. Resultado refleja todos los cambios en tiempo real: filtros, espejo, marcas de agua, crop de plataforma. Primer frame forzado via `currentTime=0.001` + evento `seeked`
+- Preview reproducible: boton Play/Pause para ver la vista previa animada con rAF loop
+- Captura de fotograma: exporta el canvas del resultado como PNG descargable
+- Chips de cambios activos: barra de chips arriba del boton "Convertir" con ✕ para desactivar ajustes individualmente
+- Historial de conversiones: lista persistente en localStorage (max 20 entradas) con nombre, plataforma, ahorro y fecha
+- Presets de usuario: guardar/cargar combinaciones de ajustes como presets personalizados en localStorage
 - Cancelacion de conversiones en curso
 - Recuperacion automatica de sesion tras refresh del navegador
 - Reconexion SSE automatica con backoff exponencial
@@ -206,7 +211,7 @@ VideoMobMp4/
 │
 ├── tests/
 │   └── unit/
-│       ├── converterCore.test.js  # 274 tests (funciones puras, presets, watermark, drawtext)
+│       ├── converterCore.test.js  # 299 tests (funciones puras, presets, watermark, drawtext)
 │       └── server.test.js         # 7 tests de integracion de la API
 │
 ├── e2e/
@@ -1605,7 +1610,7 @@ npm run test:watch    # Modo watch (vitest)
 
 ### 10.2 Tests de funciones puras (converterCore.test.js)
 
-Archivo: `tests/unit/converterCore.test.js` — 274 tests.
+Archivo: `tests/unit/converterCore.test.js` — 299 tests.
 
 | Grupo `describe` | Tests | Que verifica |
 |-------------------|-------|-------------|
@@ -1664,7 +1669,21 @@ El servidor se importa y arranca en un puerto aleatorio (`server.listen(0)`) par
 | `path traversal bloqueado` | URL con `%2F..` no devuelve 200 |
 | `archivo no existente → 404` | GET a ruta inexistente devuelve 404 |
 
-### 10.4 Fixtures de test
+### 10.4 Tests E2E (e2e.test.js)
+
+Archivo: `tests/unit/e2e.test.js` — 5 tests.
+
+Tests de integracion completa que suben un archivo MOV real (`test-small.mov`), lo convierten con FFmpeg, y verifican el resultado:
+
+| Test | Que verifica |
+|------|-------------|
+| Conversion con ajustes por defecto | Upload → jobId → SSE done → outputSize > 0 |
+| MP4 resultante es valido | Descarga + ffprobe confirma codec H.264 |
+| Conversion con filtro sepia | Filtro aplicado → conversion exitosa |
+| Conversion con mute | ffprobe confirma sin audio stream |
+| Conversion con mirror | hflip aplicado → conversion exitosa |
+
+### 10.5 Fixtures de test
 
 Script: `e2e/fixtures/generate-fixture.sh`
 

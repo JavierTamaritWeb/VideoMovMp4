@@ -22,6 +22,9 @@ import {
   buildTargetSizeArgs,
   buildSpeedFilter,
   getVideoFilter,
+  PLATFORM_PRESETS,
+  VIDEO_FILTERS,
+  WATERMARK_POSITIONS,
 } from './src/js/converterCore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -122,7 +125,7 @@ function checkRateLimit(ip) {
 const jobs = new Map();
 
 function createJob(opts) {
-  const id = uuidv4();
+  const id = opts.id || uuidv4();
   const outputPath = path.join(CONVERTED_DIR, `${id}.mp4`);
   const job = {
     id,
@@ -196,6 +199,10 @@ function startCleanupTimer() {
         jobs.delete(id);
         log('INFO', `Limpiado job expirado`, id);
       }
+    }
+    // Sweep expired rate limit entries
+    for (const [ip, entry] of rateLimits) {
+      if (now > entry.resetAt) rateLimits.delete(ip);
     }
   }, CLEANUP_INTERVAL_MS);
 }
@@ -284,31 +291,29 @@ function startConversion(job) {
       '-y',
       job.outputPath,
     ];
-    log('INFO', `Iniciando conversión: CRF ${qualityToCRF(job.quality)}, ${job.resolution}, preset ${job.preset}`, job.id);
+    log('INFO', `Iniciando conversión: CRF ${crf}, ${job.resolution}, preset ${job.preset}`, job.id);
   }
 
-  // Inject hflip filter for mirror mode
-  if (job.mirror) {
-    const vfIdx = args.indexOf('-vf');
-    if (vfIdx !== -1) {
-      args[vfIdx + 1] += ',hflip';
+  // Helper: inject a video filter into -vf or -filter_complex chain
+  function injectVF(filter) {
+    const fcIdx = args.indexOf('-filter_complex');
+    if (fcIdx !== -1) {
+      args[fcIdx + 1] = args[fcIdx + 1].replace(/\[v\]$/, `,${filter}[v]`);
     } else {
-      const progIdx = args.indexOf('-progress');
-      args.splice(progIdx, 0, '-vf', 'hflip');
+      const vfIdx = args.indexOf('-vf');
+      if (vfIdx !== -1) {
+        args[vfIdx + 1] += `,${filter}`;
+      } else {
+        const progIdx = args.indexOf('-progress');
+        args.splice(progIdx, 0, '-vf', filter);
+      }
     }
   }
 
-  // Inject video filter (grayscale, sepia, etc.)
+  if (job.mirror) injectVF('hflip');
+
   const vFilter = getVideoFilter(job.videoFilter);
-  if (vFilter) {
-    const vfIdx = args.indexOf('-vf');
-    if (vfIdx !== -1) {
-      args[vfIdx + 1] += `,${vFilter}`;
-    } else {
-      const progIdx = args.indexOf('-progress');
-      args.splice(progIdx, 0, '-vf', vFilter);
-    }
-  }
+  if (vFilter) injectVF(vFilter);
 
   // Inject watermark overlay (requires -filter_complex instead of -vf)
   if (job.watermarkPath) {
@@ -401,17 +406,7 @@ function startConversion(job) {
   if (job.speed !== 1) {
     const speedResult = buildSpeedFilter(job.speed);
     if (speedResult) {
-      // Inject video speed filter
-      const vfIdx = args.indexOf('-vf');
-      const fcIdx = args.indexOf('-filter_complex');
-      if (fcIdx !== -1) {
-        args[fcIdx + 1] = args[fcIdx + 1].replace(/\[v\]$/, `,${speedResult.videoFilter}[v]`);
-      } else if (vfIdx !== -1) {
-        args[vfIdx + 1] += `,${speedResult.videoFilter}`;
-      } else {
-        const progIdx = args.indexOf('-progress');
-        args.splice(progIdx, 0, '-vf', speedResult.videoFilter);
-      }
+      injectVF(speedResult.videoFilter);
       // Inject audio speed filter (if not muted)
       if (!job.mute) {
         const progIdx = args.indexOf('-progress');
@@ -634,14 +629,9 @@ function parseMultipart(req) {
 }
 
 // ─── Check FFmpeg availability ───────────────────────────────────────────────
-function isFFmpegAvailable() {
-  try {
-    execSync('ffmpeg -version', { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-}
+const _ffmpegAvailable = (() => {
+  try { execSync('ffmpeg -version', { stdio: 'ignore' }); return true; } catch { return false; }
+})();
 
 // ─── JSON response helper ────────────────────────────────────────────────────
 function sendJSON(res, statusCode, data) {
@@ -666,11 +656,11 @@ export const server = http.createServer(async (req, res) => {
       const uptime = Math.round(process.uptime());
       sendJSON(res, 200, {
         status: 'ok',
-        ffmpeg: isFFmpegAvailable(),
+        ffmpeg: _ffmpegAvailable,
         uptime,
         activeJobs: getActiveJobCount(),
         totalJobs: jobs.size,
-        version: '1.1.2',
+        version: '1.2.2',
       });
       return;
     }
@@ -753,20 +743,14 @@ export const server = http.createServer(async (req, res) => {
       }
 
       // Create job
-      // Validate watermark position
+      // Validate inputs against exported constants
       const wpRaw = fields.watermarkPosition || 'bottom-right';
-      const validWmPositions = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'];
-      const wmPos = (validWmPositions.includes(wpRaw) || /^custom:\d+:\d+$/.test(wpRaw)) ? wpRaw : 'bottom-right';
-
-      // Validate platform
-      const validPlatforms = ['custom', 'web', 'tiktok', 'instagram', 'whatsapp', 'youtube'];
-      const platform = validPlatforms.includes(fields.platform) ? fields.platform : 'custom';
-
-      // Validate video filter
-      const validFilters = ['none', 'grayscale', 'sepia', 'invert', 'vintage', 'vignette', 'blur', 'sharpen', 'bright', 'contrast', 'saturate', 'desaturate'];
-      const vFilter = validFilters.includes(fields.videoFilter) ? fields.videoFilter : 'none';
+      const wmPos = (wpRaw in WATERMARK_POSITIONS || /^custom:\d+:\d+$/.test(wpRaw)) ? wpRaw : 'bottom-right';
+      const platform = (fields.platform in PLATFORM_PRESETS) ? fields.platform : 'custom';
+      const vFilterId = (fields.videoFilter in VIDEO_FILTERS) ? fields.videoFilter : 'none';
 
       const job = createJob({
+        id: jobId,
         inputPath,
         originalFilename: fileFilename,
         sanitized,
@@ -794,13 +778,8 @@ export const server = http.createServer(async (req, res) => {
         mute: fields.mute || '0',
         speed: fields.speed || '1',
         targetSizeMB: fields.targetSizeMB || null,
-        videoFilter: vFilter,
+        videoFilter: vFilterId,
       });
-      // Override the job id to match the one used for the file
-      jobs.delete(job.id);
-      job.id = jobId;
-      job.outputPath = path.join(CONVERTED_DIR, `${jobId}.mp4`);
-      jobs.set(jobId, job);
 
       log('INFO', `Upload recibido: ${fileFilename} (${formatFileSize(fileData.length)})`, jobId);
 

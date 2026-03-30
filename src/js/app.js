@@ -54,6 +54,15 @@ const presetSelect = $('#presetSelect');
 const progressBar = $('#progressBar');
 const progressText = $('#progressText');
 const metaCards = $('#metaCards');
+const metaDuration = $('#metaDuration');
+const metaResolution = $('#metaResolution');
+const metaCodec = $('#metaCodec');
+const metaFps = $('#metaFps');
+const metaSize = $('#metaSize');
+const statFps = $('#statFps');
+const statSpeed = $('#statSpeed');
+const statElapsed = $('#statElapsed');
+const statEta = $('#statEta');
 const resultPreview = $('#resultPreview');
 const errorMessage = $('#errorMessage');
 const platformGrid = $('#platformGrid');
@@ -135,6 +144,110 @@ const notyf = new Notyf({
   ],
 });
 
+// ─── Active Chips ───────────────────────────────────────────────────────────
+const activeChips = $('#activeChips');
+
+function updateActiveChips() {
+  const chips = [];
+
+  if (selectedPlatform !== 'custom') {
+    const p = PLATFORM_PRESETS[selectedPlatform];
+    chips.push({ id: 'platform', icon: '📱', label: p?.label || selectedPlatform, action: 'platform' });
+  }
+  if (selectedFilter !== 'none') {
+    const f = VIDEO_FILTERS[selectedFilter];
+    chips.push({ id: 'filter', icon: '🎨', label: f?.label || selectedFilter, action: 'filter' });
+  }
+  if (mirrorCheckbox.checked) {
+    chips.push({ id: 'mirror', icon: '🪞', label: 'Espejo', action: 'mirror' });
+  }
+  if (muteCheckbox.checked) {
+    chips.push({ id: 'mute', icon: '🔇', label: 'Mute', action: 'mute' });
+  }
+  if (speedSlider.value !== '1') {
+    chips.push({ id: 'speed', icon: '⚡', label: speedSlider.value + 'x', action: 'speed' });
+  }
+  if (trimCheckbox.checked) {
+    chips.push({ id: 'trim', icon: '✂', label: 'Recorte', action: 'trim' });
+  }
+  if (targetSizeCheckbox.checked) {
+    chips.push({ id: 'targetSize', icon: '📦', label: targetSizeInput.value + ' MB', action: 'targetSize' });
+  }
+  if (watermarkCheckbox.checked && watermarkFile) {
+    chips.push({ id: 'watermarkImg', icon: '🖼', label: 'Marca imagen', action: 'watermarkImg' });
+  }
+  if (textWmCheckbox.checked && textWmInput.value.trim()) {
+    chips.push({ id: 'watermarkText', icon: '✏', label: 'Marca texto', action: 'watermarkText' });
+  }
+
+  activeChips.innerHTML = chips.map(c =>
+    `<span class="settings__chip" data-chip="${c.action}">` +
+    `<span class="settings__chip__icon">${c.icon}</span> ${c.label}` +
+    `<button type="button" class="settings__chip__remove" data-remove="${c.action}" title="Desactivar">✕</button>` +
+    `</span>`
+  ).join('');
+}
+
+activeChips.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-remove]');
+  if (!btn) return;
+  const action = btn.dataset.remove;
+
+  switch (action) {
+    case 'platform':
+      selectedPlatform = 'custom';
+      for (const card of platformGrid.querySelectorAll('.settings__platform-card')) {
+        card.classList.toggle('settings__platform-card--active', card.dataset.platform === 'custom');
+      }
+      const customRadio = platformGrid.querySelector('input[value="custom"]');
+      if (customRadio) customRadio.checked = true;
+      settingsGrid.classList.remove('settings__grid--platform-active');
+      instagramFormat.style.display = 'none';
+      platformHint.textContent = '';
+      break;
+    case 'filter':
+      selectedFilter = 'none';
+      for (const b of filterGrid.querySelectorAll('.settings__filter-btn')) {
+        b.classList.toggle('settings__filter-btn--active', b.dataset.filter === 'none');
+      }
+      break;
+    case 'mirror':
+      mirrorCheckbox.checked = false;
+      break;
+    case 'mute':
+      muteCheckbox.checked = false;
+      break;
+    case 'speed':
+      speedSlider.value = 1;
+      speedValue.textContent = '1x';
+      updateSliderFill(speedSlider);
+      break;
+    case 'trim':
+      trimCheckbox.checked = false;
+      trimControls.style.display = 'none';
+      break;
+    case 'targetSize':
+      targetSizeCheckbox.checked = false;
+      targetSizeControls.style.display = 'none';
+      qualityGroup.style.display = '';
+      break;
+    case 'watermarkImg':
+      watermarkCheckbox.checked = false;
+      watermarkOptions.hidden = true;
+      watermarkFile = null;
+      watermarkPreview.src = '/src/img/image.svg';
+      watermarkRemove.hidden = true;
+      watermarkInput.value = '';
+      break;
+    case 'watermarkText':
+      textWmCheckbox.checked = false;
+      textWmOptions.hidden = true;
+      break;
+  }
+  updateActiveChips();
+  updateWmPreview();
+});
+
 // ─── Trim ───────────────────────────────────────────────────────────────────
 trimCheckbox.addEventListener('change', () => {
   trimControls.style.display = trimCheckbox.checked ? '' : 'none';
@@ -170,6 +283,12 @@ trimEnd.addEventListener('input', () => {
 // ─── Speed ──────────────────────────────────────────────────────────────────
 speedSlider.addEventListener('input', () => {
   speedValue.textContent = speedSlider.value + 'x';
+  updateSliderFill(speedSlider);
+  updateActiveChips();
+});
+
+muteCheckbox.addEventListener('change', () => {
+  updateActiveChips();
 });
 
 // ─── Target Size ────────────────────────────────────────────────────────────
@@ -333,7 +452,14 @@ function presetToPreviewCoords(preset, cW, cH, elW, elH) {
   }
 }
 
+let _wmPreviewPending = false;
 function updateWmPreview() {
+  if (_wmPreviewPending) return;
+  _wmPreviewPending = true;
+  requestAnimationFrame(() => { _wmPreviewPending = false; _updateWmPreview(); });
+}
+function _updateWmPreview() {
+  updateActiveChips();
   if (!videoPreview.videoWidth) {
     wmPreview.hidden = true;
     return;
@@ -521,6 +647,7 @@ document.addEventListener('touchend', onWmDragEnd);
 
 // ─── UI State Machine ────────────────────────────────────────────────────────
 function setState(state) {
+  if (uiState === state) return;
   uiState = state;
   const panels = { panelUpload, panelSettings, panelProgress, panelResult, panelError };
   // Hide all panels first
@@ -537,6 +664,7 @@ function setState(state) {
       dropzone.hidden = true;
       fileInfo.hidden = false;
       panelSettings.hidden = false;
+      presetsSave.style.display = '';
       break;
     case 'converting':
       panelProgress.hidden = false;
@@ -686,6 +814,7 @@ async function startConversion() {
   // Reset progress UI
   progressBar.style.width = '0%';
   progressBar.classList.remove('progress__bar--done');
+  progressBar.classList.add('progress__bar--converting');
   progressText.textContent = '0%';
   metaCards.hidden = true;
   resetStats();
@@ -809,11 +938,11 @@ function handleSSEEvent(event) {
 
 function showMetadata(meta) {
   metaCards.hidden = false;
-  $('#metaDuration').textContent = formatDuration(meta.duration);
-  $('#metaResolution').textContent = `${meta.width}×${meta.height}`;
-  $('#metaCodec').textContent = meta.videoCodec;
-  $('#metaFps').textContent = meta.fps;
-  $('#metaSize').textContent = formatFileSize(meta.fileSize || meta.bitrate || 0);
+  metaDuration.textContent = formatDuration(meta.duration);
+  metaResolution.textContent = `${meta.width}×${meta.height}`;
+  metaCodec.textContent = meta.videoCodec;
+  metaFps.textContent = meta.fps;
+  metaSize.textContent = formatFileSize(meta.fileSize || meta.bitrate || 0);
 }
 
 function updateProgress(data) {
@@ -822,10 +951,10 @@ function updateProgress(data) {
   progressText.textContent = `${pct}%`;
   progressBar.setAttribute('aria-valuenow', pct);
 
-  $('#statFps').textContent = data.fps ? data.fps.toFixed(1) : '--';
-  $('#statSpeed').textContent = data.speed || '--';
-  $('#statElapsed').textContent = data.elapsed ? formatDuration(data.elapsed) : '--';
-  $('#statEta').textContent = data.eta ? formatETA(data.eta) : '--';
+  statFps.textContent = data.fps ? data.fps.toFixed(1) : '--';
+  statSpeed.textContent = data.speed || '--';
+  statElapsed.textContent = data.elapsed ? formatDuration(data.elapsed) : '--';
+  statEta.textContent = data.eta ? formatETA(data.eta) : '--';
 }
 
 function resetStats() {
@@ -840,6 +969,7 @@ function onConversionDone(data) {
 
   // Update progress to 100%
   progressBar.style.width = '100%';
+  progressBar.classList.remove('progress__bar--converting');
   progressBar.classList.add('progress__bar--done');
   progressText.textContent = '100%';
 
@@ -867,6 +997,14 @@ function onConversionDone(data) {
   }
 
   setState('done');
+
+  // Save to history
+  saveToHistory({
+    filename: currentFile?.name || 'vídeo',
+    platform: selectedPlatform,
+    savings: `${Math.abs(savings)}% ${savings > 0 ? 'menos' : 'más'}`,
+    date: new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+  });
 
   // Notifications
   notyf.success(`¡Conversión completada! ${data.outputSizeFormatted || ''} (${Math.abs(savings)}% ${savings > 0 ? 'menos' : 'más'})`);
@@ -1078,6 +1216,7 @@ function playCompletionSound() {
     osc.start();
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
     osc.stop(ctx.currentTime + 0.3);
+    osc.onended = () => ctx.close();
   } catch {}
 }
 
@@ -1124,7 +1263,244 @@ function connectLiveReload() {
   };
 }
 
+// ─── History (localStorage) ──────────────────────────────────────────────────
+const HISTORY_KEY = 'videomovmp4_history';
+const MAX_HISTORY = 20;
+const historyList = $('#historyList');
+const historyEmpty = $('#historyEmpty');
+const btnClearHistory = $('#btnClearHistory');
+
+function getHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch { return []; }
+}
+
+function saveToHistory(entry) {
+  const history = getHistory();
+  history.unshift(entry);
+  if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  renderHistory();
+}
+
+function renderHistory() {
+  const history = getHistory();
+  if (history.length === 0) {
+    historyEmpty.style.display = '';
+    btnClearHistory.style.display = 'none';
+    historyList.querySelectorAll('.history__item').forEach(el => el.remove());
+    return;
+  }
+  historyEmpty.style.display = 'none';
+  btnClearHistory.style.display = '';
+  const existing = historyList.querySelectorAll('.history__item');
+  existing.forEach(el => el.remove());
+  history.forEach((item, i) => {
+    const el = document.createElement('div');
+    el.className = 'history__item';
+    el.innerHTML = `
+      <div class="history__item-info">
+        <div class="history__item-name">${item.filename || 'vídeo'}</div>
+        <div class="history__item-meta">
+          <span class="history__item-badge">${item.platform || 'custom'}</span>
+          <span>${item.savings || ''}</span>
+        </div>
+      </div>
+      <span class="history__item-date">${item.date || ''}</span>
+    `;
+    historyList.appendChild(el);
+  });
+}
+
+btnClearHistory.addEventListener('click', () => {
+  localStorage.removeItem(HISTORY_KEY);
+  renderHistory();
+});
+
+
+// ─── User Presets (localStorage) ────────────────────────────────────────────
+const PRESETS_KEY = 'videomovmp4_presets';
+const presetsList = $('#presetsList');
+const presetsEmpty = $('#presetsEmpty');
+const presetsSave = $('#presetsSave');
+const presetNameInput = $('#presetNameInput');
+const btnSavePreset = $('#btnSavePreset');
+
+function getPresets() {
+  try { return JSON.parse(localStorage.getItem(PRESETS_KEY)) || []; } catch { return []; }
+}
+
+function getCurrentSettings() {
+  return {
+    platform: selectedPlatform,
+    igFormat: document.querySelector('input[name="igFormat"]:checked')?.value || 'reels',
+    quality: qualitySlider.value,
+    resolution: resolutionSelect.value,
+    preset: presetSelect.value,
+    mirror: mirrorCheckbox.checked,
+    mute: muteCheckbox.checked,
+    speed: speedSlider.value,
+    videoFilter: selectedFilter,
+    targetSize: targetSizeCheckbox.checked ? targetSizeInput.value : null,
+  };
+}
+
+function applyPreset(settings) {
+  // Platform
+  selectedPlatform = settings.platform || 'custom';
+  for (const card of platformGrid.querySelectorAll('.settings__platform-card')) {
+    card.classList.toggle('settings__platform-card--active', card.dataset.platform === selectedPlatform);
+  }
+  const radio = platformGrid.querySelector(`input[value="${selectedPlatform}"]`);
+  if (radio) radio.checked = true;
+  const isCustom = selectedPlatform === 'custom';
+  settingsGrid.classList.toggle('settings__grid--platform-active', !isCustom);
+  instagramFormat.style.display = selectedPlatform === 'instagram' ? '' : 'none';
+  const igRadio = document.querySelector(`input[name="igFormat"][value="${settings.igFormat || 'reels'}"]`);
+  if (igRadio) igRadio.checked = true;
+
+  // Quality
+  qualitySlider.value = settings.quality || 75;
+  updateQualityUI();
+  resolutionSelect.value = settings.resolution || 'original';
+  presetSelect.value = settings.preset || 'medium';
+
+  // Toggles
+  mirrorCheckbox.checked = settings.mirror || false;
+  muteCheckbox.checked = settings.mute || false;
+  speedSlider.value = settings.speed || 1;
+  speedValue.textContent = (settings.speed || 1) + 'x';
+
+  // Filter
+  selectedFilter = settings.videoFilter || 'none';
+  for (const b of filterGrid.querySelectorAll('.settings__filter-btn')) {
+    b.classList.toggle('settings__filter-btn--active', b.dataset.filter === selectedFilter);
+  }
+
+  // Target size
+  if (settings.targetSize) {
+    targetSizeCheckbox.checked = true;
+    targetSizeControls.style.display = '';
+    targetSizeInput.value = settings.targetSize;
+    qualityGroup.style.display = 'none';
+  } else {
+    targetSizeCheckbox.checked = false;
+    targetSizeControls.style.display = 'none';
+    qualityGroup.style.display = '';
+  }
+
+  // Update sliders fill + preview
+  for (const s of document.querySelectorAll('.settings__slider')) updateSliderFill(s);
+  updateWmPreview();
+  notyf.success('Preset aplicado');
+}
+
+function savePreset(name) {
+  const presets = getPresets();
+  presets.unshift({ name, settings: getCurrentSettings(), date: new Date().toLocaleDateString('es-ES') });
+  if (presets.length > 20) presets.length = 20;
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+  renderPresets();
+}
+
+function deletePreset(index) {
+  const presets = getPresets();
+  presets.splice(index, 1);
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+  renderPresets();
+}
+
+function renderPresets() {
+  const presets = getPresets();
+  presetsEmpty.style.display = presets.length === 0 ? '' : 'none';
+  presetsList.querySelectorAll('.presets__item').forEach(el => el.remove());
+  presets.forEach((p, i) => {
+    const el = document.createElement('div');
+    el.className = 'presets__item';
+    el.innerHTML = `
+      <span class="presets__item-name">${p.name}</span>
+      <span class="presets__item-meta">${p.settings?.platform || 'custom'} · ${p.date || ''}</span>
+      <div class="presets__item-actions">
+        <button class="presets__item-btn" data-action="load" data-index="${i}">Aplicar</button>
+        <button class="presets__item-btn presets__item-btn--delete" data-action="delete" data-index="${i}">×</button>
+      </div>
+    `;
+    presetsList.appendChild(el);
+  });
+}
+
+btnSavePreset.addEventListener('click', () => {
+  const name = presetNameInput.value.trim();
+  if (!name) { notyf.error('Escribe un nombre para el preset'); return; }
+  savePreset(name);
+  presetNameInput.value = '';
+  notyf.success('Preset guardado');
+});
+
+presetsList.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const idx = parseInt(btn.dataset.index);
+  if (btn.dataset.action === 'load') {
+    const presets = getPresets();
+    if (presets[idx]) applyPreset(presets[idx].settings);
+  } else if (btn.dataset.action === 'delete') {
+    deletePreset(idx);
+  }
+});
+
+
+// ─── Preview Play/Pause ─────────────────────────────────────────────────────
+const btnPreviewPlay = $('#btnPreviewPlay');
+const previewPlayIcon = $('#previewPlayIcon');
+let previewAnimId = null;
+
+btnPreviewPlay.addEventListener('click', () => {
+  if (previewAnimId) {
+    // Stop
+    cancelAnimationFrame(previewAnimId);
+    previewAnimId = null;
+    videoPreview.pause();
+    previewPlayIcon.className = 'fa-solid fa-play';
+  } else {
+    // Play
+    if (!videoPreview.videoWidth) return;
+    videoPreview.play();
+    previewPlayIcon.className = 'fa-solid fa-pause';
+    function renderLoop() {
+      if (videoPreview.paused || videoPreview.ended) {
+        previewAnimId = null;
+        previewPlayIcon.className = 'fa-solid fa-play';
+        return;
+      }
+      updateWmPreview();
+      previewAnimId = requestAnimationFrame(renderLoop);
+    }
+    previewAnimId = requestAnimationFrame(renderLoop);
+  }
+});
+
+// ─── Capture Frame as PNG ───────────────────────────────────────────────────
+const btnCaptureFrame = $('#btnCaptureFrame');
+
+btnCaptureFrame.addEventListener('click', () => {
+  const canvas = document.getElementById('wmPreviewCanvas');
+  if (!canvas || !canvas.width) {
+    notyf.error('No hay vista previa para capturar');
+    return;
+  }
+  const dataUrl = canvas.toDataURL('image/png');
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = `frame_${currentFile?.name?.replace('.mov', '') || 'video'}.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  notyf.success('Fotograma capturado');
+});
+
 // ─── Init ────────────────────────────────────────────────────────────────────
 setState('idle');
+renderHistory();
+renderPresets();
 tryRecoverSession();
 connectLiveReload();

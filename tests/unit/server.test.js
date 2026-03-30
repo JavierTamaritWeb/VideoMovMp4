@@ -48,7 +48,7 @@ describe('Server API', () => {
     expect(res.status).toBe(200);
     expect(res.json.status).toBe('ok');
     expect(res.json.ffmpeg).toBe(true);
-    expect(res.json.version).toBe('1.1.2');
+    expect(res.json.version).toBe('1.2.2');
   });
 
   it('POST /api/convert sin archivo → 400', async () => {
@@ -91,7 +91,7 @@ describe('Server API', () => {
     expect(res.status).toBe(404);
   });
 
-  it('GET /api/health devuelve version 1.1.2 y campos esperados', async () => {
+  it('GET /api/health devuelve version 1.2.2 y campos esperados', async () => {
     const res = await request('GET', '/api/health');
     expect(res.json).toHaveProperty('status');
     expect(res.json).toHaveProperty('ffmpeg');

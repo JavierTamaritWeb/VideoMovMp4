@@ -6,7 +6,7 @@
   <title>VideoMovMp4 — Conversor MOV → MP4</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat+Alternates:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat+Alternates:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css">
   <link rel="stylesheet" href="/src/css/app.css">
@@ -361,6 +361,14 @@
               <span id="wmPreviewText" class="settings__wm-preview-drag settings__wm-preview-text"></span>
             </div>
           </div>
+          <div class="settings__preview-actions">
+            <button type="button" class="btn btn--ghost btn--sm" id="btnPreviewPlay" title="Reproducir/Pausar preview">
+              <i class="fa-solid fa-play" id="previewPlayIcon"></i> Preview
+            </button>
+            <button type="button" class="btn btn--ghost btn--sm" id="btnCaptureFrame" title="Capturar fotograma como PNG">
+              <i class="fa-solid fa-camera"></i> Capturar frame
+            </button>
+          </div>
           <p class="settings__hint settings__preview-hint">Arrastra las marcas de agua en el panel de resultado para posicionarlas.</p>
         </div>
 
@@ -376,6 +384,8 @@
           <p class="settings__hint">Presets más lentos producen mejor compresión</p>
         </fieldset>
       </div>
+
+      <div class="settings__active-chips" id="activeChips"></div>
 
       <button class="btn btn--primary btn--large settings__convert" id="btnConvert" type="button" title="Ctrl/Cmd + Enter">
         <i class="fa-solid fa-arrows-rotate"></i> Convertir a MP4
@@ -485,6 +495,31 @@
       </div>
     </section>
 
+    <!-- History panel -->
+    <section class="panel panel--history" id="panelHistory" aria-label="Historial">
+      <h2 class="panel__title"><i class="fa-solid fa-clock-rotate-left"></i> Historial de conversiones</h2>
+      <div class="history__list" id="historyList">
+        <p class="history__empty" id="historyEmpty">No hay conversiones recientes</p>
+      </div>
+      <button class="btn btn--ghost history__clear" id="btnClearHistory" type="button" style="display:none">
+        <i class="fa-solid fa-trash"></i> Limpiar historial
+      </button>
+    </section>
+
+    <!-- User presets panel -->
+    <section class="panel panel--presets" id="panelPresets" aria-label="Presets de usuario">
+      <h2 class="panel__title"><i class="fa-solid fa-bookmark"></i> Mis presets</h2>
+      <div class="presets__save" id="presetsSave" style="display:none">
+        <input type="text" id="presetNameInput" class="presets__name-input" placeholder="Nombre del preset..." maxlength="40">
+        <button class="btn btn--primary presets__save-btn" id="btnSavePreset" type="button">
+          <i class="fa-solid fa-plus"></i> Guardar preset actual
+        </button>
+      </div>
+      <div class="presets__list" id="presetsList">
+        <p class="presets__empty" id="presetsEmpty">No hay presets guardados</p>
+      </div>
+    </section>
+
     <!-- Error panel -->
     <section class="panel panel--error" id="panelError" hidden aria-label="Error" aria-live="assertive">
       <div class="error__content">
@@ -499,7 +534,7 @@
 
   <footer class="footer">
     <p>VideoMovMp4 — Herramienta de conversión de vídeo</p>
-    <p>v1.1.2</p>
+    <p>v1.2.2</p>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
