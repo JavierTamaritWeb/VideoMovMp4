@@ -14,8 +14,8 @@
   "license": "ISC",
   "description": "VideoMovMp4 — Conversor MOV a MP4 para web",
   "dependencies": {
-    "multer": "^2.1.1",
-    "uuid": "^13.0.0"
+    "multer": "^2.4.0",
+    "uuid": "^13.0.2"
   },
   "devDependencies": {
     "vitest": "^4.1.2"
